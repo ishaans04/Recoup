@@ -69,12 +69,106 @@ vocabulary and every cross-layer interface the remaining phases build against.
 
 ---
 
+### Phase 1 — Persistence & the physically append-only audit trail
+_Status: complete_
+
+Satisfies PRD §8.6 (audit trail), §9.6 (audit store), §10.1 (`WorkItem`
+persistence), §10.2 (`AuditEvent` persistence), §14 (full auditability, no
+duplicate money actions).
+
+Phase 1 makes §8.6's claim — "append-only. Never updated, never deleted — only
+inserted" — mechanically true rather than a coding convention: the database
+itself refuses an `UPDATE` or a `DELETE` on `audit_events`, and a test issues
+both directly in SQL and watches them fail.
+
+#### Added
+
+- `recoup.storage.tables` — SQLAlchemy 2.0 declarative tables `work_items` and
+  `audit_events`, using only column types Postgres and SQLite share
+  (`String`, `JSON`, `DateTime(timezone=True)`, `Boolean`, `Integer`,
+  `BigInteger`) so `database_url` is the entire production migration (§9.6).
+  `work_items.event_id` carries a database `UNIQUE` constraint — the
+  idempotency guarantee of §8.1/§13.2 enforced by the schema, not only by
+  application code. `state` and `created_at` are indexed for the dashboard's
+  filter and default ordering; `audit_events.txn_id` is indexed for
+  per-transaction lookup, and its `id` primary key already serves as the
+  ascending index the `since_id` WebSocket cursor needs.
+- `UTCDateTime` — a `TypeDecorator` wrapping `DateTime(timezone=True)` that
+  normalises to UTC on write and reattaches UTC on read. Needed because
+  pysqlite silently drops the offset on the way out; without it a work item's
+  `created_at` round-trips naive from SQLite and is rejected by `WorkItem`'s
+  own aware-datetime validator — a difference between the two dialects §9.6
+  promises does not exist.
+- Append-only enforcement: two SQLite triggers (`audit_events_no_update`,
+  `audit_events_no_delete`) that `RAISE(ABORT, 'audit_events is append-only')`,
+  attached via `sqlalchemy.event.listen(AuditEventRow.__table__,
+  "after_create", DDL(...))` so they exist the instant the table does. The
+  Postgres equivalent — a `plpgsql` trigger function plus a `REVOKE UPDATE,
+  DELETE ... FROM PUBLIC` — is written to the same contract and guarded to the
+  `postgresql` dialect; this project has no Postgres instance to run it
+  against, so it is exercised by review, not by the test suite.
+- `recoup.storage.db` — `create_engine_for(settings)` (SQLite gets
+  `check_same_thread=False` plus a per-connection `PRAGMA foreign_keys=ON`),
+  `init_schema(engine)` (idempotent `create_all`), and
+  `unit_of_work(engine)` — a context manager yielding one transactional
+  `Session`: commits on a clean exit, rolls back and re-raises on any
+  exception. This is the atomicity primitive behind §8.6's completeness
+  claim — Phase 2's state machine wraps one work-item checkpoint and one
+  audit append in a single call, so a state change can never persist without
+  the row that explains it.
+- `recoup.storage.audit.AuditLog` — the only writer to `audit_events`.
+  `append(event, session=None) -> int` returns the assigned id, joining a
+  caller-supplied session's transaction or opening its own; `list_since(since_id,
+  limit=100) -> list[AuditEvent]` powers the WebSocket backfill; `for_txn(txn_id)
+  -> list[AuditEvent]` is the per-transaction history the dashboard renders. The
+  class exposes no `update` or `delete` method — a test introspects it to prove
+  that, not just assert it.
+- `recoup.storage.work_items.WorkItemRepo` — `create_if_absent(item,
+  session=None) -> tuple[WorkItem, bool]`, idempotent on `event_id` by
+  attempting the insert inside a `SAVEPOINT` and re-reading on a unique-constraint
+  violation rather than checking-then-inserting, so it is correct under
+  concurrent duplicate deliveries (§8.1, §13.2); `get(txn_id) -> WorkItem |
+  None`; `save(item, session=None) -> WorkItem`, a full checkpoint of every
+  mutable field; `list(state=, cause=, limit=50, cursor=None) -> list[WorkItem]`,
+  keyset-paginated on `(created_at, txn_id)` newest first so a page cannot
+  skip or repeat rows under concurrent inserts, the way an `OFFSET` page
+  would; `count_by_state() -> dict[State, int]` for the Phase 10 dashboard.
+- 34 new unit tests in `backend/tests/unit/` (`test_audit_immutability.py`,
+  `test_audit_log.py`, `test_work_items.py`, `test_unit_of_work.py`), plus a
+  shared `backend/tests/conftest.py` engine fixture — 177 unit tests total.
+
+#### Decisions
+
+- The `engine` fixture uses `tempfile.TemporaryDirectory` rather than
+  pytest's built-in `tmp_path`. On this development machine,
+  `tmp_path`'s shared `%TEMP%\pytest-of-<user>` tree has become
+  unreadable/unwritable by this account (confirmed independently of this
+  project — even `icacls` on it fails with "Access is denied"), so every
+  `tmp_path`-based test errored at fixture setup. A private temp directory
+  requested directly sidesteps that machine-specific breakage while keeping
+  the same guarantee: a fresh directory per test, discarded with it.
+- The SQLite engine backing each test is file-based, not `sqlite:///:memory:`.
+  A shared in-memory database needs a `StaticPool` funnelling every session
+  through one physical connection, which would make two "independent"
+  sessions see each other's uncommitted writes and falsify the
+  transaction-isolation tests in `test_unit_of_work.py` and `test_audit_log.py`.
+- `amount_paise` is stored as `BigInteger`, not `Integer`. The domain model
+  places no upper bound on an amount — only the constraint gate's
+  `max_amount_paise` does, and that is policy, not a type limit — so the
+  column should not silently wrap a value `WorkItem` would accept.
+- `create_if_absent`'s duplicate-`event_id` path rolls back only its own
+  `SAVEPOINT` (`Session.begin_nested()`), not the whole caller-supplied
+  transaction. A dedicated test proves an unrelated write earlier in the same
+  transaction survives a sibling duplicate-insert attempt.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
 |---|-------|--------------|--------|
 | 0 | Project foundation & domain vocabulary | §9, §10.1, §10.2, §17 | complete |
-| 1 | Persistence & append-only audit trail | §8.6, §9.6, §10.2, §14 | pending |
+| 1 | Persistence & append-only audit trail | §8.6, §9.6, §10.2, §14 | complete |
 | 2 | State machine & orchestrator | §4, §7.4, §8.2 | pending |
 | 3 | Ingestion: signature, normalization, idempotency | §8.1, §13.2, §14 | pending |
 | 4 | Diagnosis engine: Tier-1 rules + two-tier composition | §11, §13.2 | pending |
