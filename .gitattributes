@@ -1,0 +1,16 @@
+# Normalise line endings. The repo is developed on Windows but every consumer of
+# these files (uv, ruff, mypy, node, git diff) expects LF, so store LF in the
+# index and check out LF in the working tree.
+
+* text=auto eol=lf
+
+*.py    text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.toml  text eol=lf
+
+# Lockfiles and generated artefacts: keep LF, never diff them by hand.
+uv.lock          text eol=lf -diff
+package-lock.json text eol=lf -diff
