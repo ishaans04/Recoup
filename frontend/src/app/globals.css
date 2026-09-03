@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+/*
+ * The console is dark in every light. This is an operations surface that will be
+ * projected in a dim room and read at a glance, so it does not follow the
+ * viewer's colour-scheme preference — a light flash mid-demo would be worse than
+ * an unwanted dark theme ever is.
+ */
+
+:root {
+  --console-bg: #07090d;
+  --console-panel: #0d1219;
+  --console-panel-raised: #121a24;
+  --console-border: #1d2733;
+  --console-text: #e6edf5;
+  --console-muted: #7d8da3;
+  --console-accent: #35d6a4;
+  --console-warn: #f2b544;
+  --console-danger: #ff5f56;
+  --console-grid: rgba(53, 214, 164, 0.06);
+}
+
+@theme inline {
+  --color-console-bg: var(--console-bg);
+  --color-console-panel: var(--console-panel);
+  --color-console-panel-raised: var(--console-panel-raised);
+  --color-console-border: var(--console-border);
+  --color-console-text: var(--console-text);
+  --color-console-muted: var(--console-muted);
+  --color-console-accent: var(--console-accent);
+  --color-console-warn: var(--console-warn);
+  --color-console-danger: var(--console-danger);
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono",
+    Menlo, Consolas, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--console-bg);
+  color: var(--console-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A faint grid, so the empty console reads as an instrument rather than a blank page. */
+.console-grid {
+  background-image:
+    linear-gradient(to right, var(--console-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--console-grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.status-pulse {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-pulse {
+    animation: none;
+  }
+}
