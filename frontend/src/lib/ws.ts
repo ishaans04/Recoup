@@ -12,13 +12,20 @@
  *    and reconnect-with-backoff carrying the last applied `seq`. It never
  *    touches React. It accepts an injectable WebSocket constructor so tests can
  *    supply a fake transport and control time.
- * 3. `useRecoupStream` — the hook components actually use. Wires a
- *    `RecoupStreamClient` to React state and exposes connection status plus the
- *    live state described in the contract.
+ * 3. `useRecoupStream` — the hook components actually use. On mount it hydrates
+ *    a starting snapshot from REST (GET /api/metrics, /api/escalations,
+ *    /api/audit, /api/workitems — each has a direct snapshot endpoint, so
+ *    there is no need to lean on the WS buffer's retention window for
+ *    correctness), then opens a `RecoupStreamClient` seeded with that
+ *    snapshot's cursor so the live socket only backfills what the snapshot
+ *    didn't already cover. If the snapshot fetch fails outright (the backend
+ *    isn't reachable), it starts from empty state and keeps trying — the
+ *    page falls back to fixtures until `lastSeq` moves off zero.
  */
 
 import { useEffect, useState } from "react";
 
+import { getAudit, getEscalations, getMetrics, listWorkItems } from "./api";
 import { WS_URL } from "./config";
 import type {
   AuditEvent,
@@ -269,20 +276,59 @@ export interface UseRecoupStreamResult extends StreamState {
  * React hook wiring a `RecoupStreamClient` to component state. One client per
  * mount; the effect tears it down on unmount so navigating away from the
  * console never leaks a live socket.
+ *
+ * `lastSeq` stays `0` until either the REST snapshot or the WS handshake
+ * actually succeeds, so `lastSeq > 0` is the page's honest signal that it is
+ * looking at a real backend rather than needing a separate "am I live" flag.
  */
 export function useRecoupStream(url: string = WS_URL): UseRecoupStreamResult {
   const [state, setState] = useState<StreamState>(initialStreamState);
   const [status, setStatus] = useState<StreamStatus>("connecting");
 
   useEffect(() => {
-    const client = new RecoupStreamClient(url, {
-      onEnvelope: (envelope) => {
-        setState((prev) => reduceStreamState(prev, envelope));
-      },
-      onStatusChange: setStatus,
-    });
-    client.connect();
-    return () => client.close();
+    let cancelled = false;
+    let client: RecoupStreamClient | null = null;
+
+    async function hydrateThenConnect() {
+      let seed = initialStreamState();
+      try {
+        const [metrics, escalationsResponse, auditResponse, workItemsResponse] = await Promise.all([
+          getMetrics(),
+          getEscalations(),
+          getAudit({ limit: 500 }),
+          listWorkItems({ limit: 200 }),
+        ]);
+        const workItems: Record<string, WorkItem> = {};
+        for (const item of workItemsResponse.items) workItems[item.txn_id] = item;
+        seed = {
+          ...seed,
+          metrics,
+          escalations: escalationsResponse.escalations,
+          // GET /api/audit is oldest-first; every in-memory state here is
+          // newest-first, matching how a live audit.appended stream arrives.
+          auditEvents: [...auditResponse.events].reverse(),
+          workItems,
+          lastSeq: auditResponse.last_id,
+        };
+      } catch {
+        // Backend unreachable (or one snapshot call failed): start empty.
+        // The page falls back to fixtures until lastSeq genuinely moves.
+      }
+      if (cancelled) return;
+      setState(seed);
+      client = new RecoupStreamClient(url, {
+        initialLastSeq: seed.lastSeq,
+        onEnvelope: (envelope) => setState((prev) => reduceStreamState(prev, envelope)),
+        onStatusChange: setStatus,
+      });
+      client.connect();
+    }
+
+    void hydrateThenConnect();
+    return () => {
+      cancelled = true;
+      client?.close();
+    };
   }, [url]);
 
   return { ...state, status };
