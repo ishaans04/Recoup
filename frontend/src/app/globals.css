@@ -17,6 +17,7 @@
   --console-accent: #35d6a4;
   --console-warn: #f2b544;
   --console-danger: #ff5f56;
+  --console-info: #4d8dff;
   --console-grid: rgba(53, 214, 164, 0.06);
 }
 
@@ -30,6 +31,7 @@
   --color-console-accent: var(--console-accent);
   --color-console-warn: var(--console-warn);
   --color-console-danger: var(--console-danger);
+  --color-console-info: var(--console-info);
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, sans-serif;
@@ -73,6 +75,27 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .status-pulse {
+    animation: none;
+  }
+}
+
+/* A brief highlight on an audit row when it lands live, so a judge watching
+   the table can see the newest transition arrive without it being jarring. */
+@keyframes row-arrive {
+  0% {
+    background-color: rgba(53, 214, 164, 0.22);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.row-arrive {
+  animation: row-arrive 1.8s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-arrive {
     animation: none;
   }
 }
