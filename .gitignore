@@ -1,0 +1,52 @@
+# --- Agent working context (never committed) ---
+CLAUDE.md
+.superpowers/
+.claude/
+
+# --- Secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# --- Databases / local state ---
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+data/
+.cache/
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
