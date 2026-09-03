@@ -14,8 +14,8 @@ from sqlalchemy import Engine
 
 from recoup.clock import IST
 from recoup.config import Settings
-from recoup.domain.enums import State
-from recoup.domain.models import AuditEvent
+from recoup.domain.enums import FailureType, State
+from recoup.domain.models import AuditEvent, Customer, WorkItem
 from recoup.storage.db import create_engine_for, init_schema
 
 CREATED_AT = datetime(2026, 9, 3, 14, 32, 5, tzinfo=IST)
@@ -69,4 +69,30 @@ def make_audit_event(**overrides: object) -> AuditEvent:
     return AuditEvent(**fields)  # type: ignore[arg-type]
 
 
-__all__ = ["CREATED_AT", "make_audit_event"]
+def make_work_item(**overrides: object) -> WorkItem:
+    """A realistic work item; override only the field under test.
+
+    Mirrors ``tests/unit/test_models.py``'s helper of the same name and the same
+    fixture identifiers, so a row built here and one built there describe the same
+    kind of transaction.
+    """
+    fields: dict[str, object] = {
+        "txn_id": "pay_QjK9x2LmN4TzAb",
+        "event_id": "evt_8fH2kQpR7sVdWx",
+        "merchant_id": "acc_MerchantDemo01",
+        "amount_paise": 249900,
+        "failure_code": "BAD_REQUEST_ERROR",
+        "failure_message": "Your card has insufficient balance to complete this payment.",
+        "failure_type": FailureType.SUBSCRIPTION,
+        "method": "card",
+        "issuer": "HDFC",
+        "customer": Customer(
+            name="Ananya Rao", phone="+919876543210", email="ananya.rao@example.com"
+        ),
+        "created_at": CREATED_AT,
+    }
+    fields.update(overrides)
+    return WorkItem(**fields)  # type: ignore[arg-type]
+
+
+__all__ = ["CREATED_AT", "make_audit_event", "make_work_item"]
