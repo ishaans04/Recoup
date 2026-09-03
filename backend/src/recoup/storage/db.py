@@ -1,4 +1,4 @@
-"""Engine construction and schema initialisation.
+"""Engine construction, schema initialisation, and the transactional unit of work.
 
 :func:`create_engine_for` centralises the one SQLite-specific connection tweak the
 project needs, so it is set in exactly one place rather than at every call site
@@ -8,16 +8,24 @@ that happens to construct an engine.
 triggers. It is idempotent so the application, the test suite and a developer's
 scratch script can all call it without coordinating who goes first.
 
-The transactional unit of work that atomically pairs a work-item checkpoint with
-its audit append lands in a later commit, once both stores it coordinates exist.
+:func:`unit_of_work` is the atomicity primitive the rest of the storage layer is
+built on. PRD section 8.6's audit trail is only as trustworthy as the guarantee
+that a work item never changes state without a matching audit row — and that
+guarantee is real only if both writes commit, or neither does, as a single
+database transaction. Phase 2's state machine wraps exactly one work-item
+checkpoint and one audit append in a single call to this context manager.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.orm import Session
 
 from recoup.config import Settings
 from recoup.storage.tables import Base
 
-__all__ = ["create_engine_for", "init_schema"]
+__all__ = ["create_engine_for", "init_schema", "unit_of_work"]
 
 
 def create_engine_for(settings: Settings) -> Engine:
@@ -63,3 +71,24 @@ def init_schema(engine: Engine) -> None:
     fixtures and a one-off admin script can all call it unconditionally.
     """
     Base.metadata.create_all(engine, checkfirst=True)
+
+
+@contextmanager
+def unit_of_work(engine: Engine) -> Iterator[Session]:
+    """Yield a :class:`~sqlalchemy.orm.Session` scoped to a single transaction.
+
+    Commits on a clean exit from the ``with`` block; rolls back and re-raises on
+    any exception. Every write inside the block lands in one transaction, so a
+    work-item checkpoint and its audit append either both persist or neither does
+    — there is no state in which the audit trail is missing the row that explains
+    a change that took effect.
+    """
+    session = Session(engine)
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
