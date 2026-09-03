@@ -6,5 +6,22 @@ arrives in phase 6 and the real circuit breaker in phase 7.
 """
 
 from recoup.constraints.base import BreakerState, NullBreaker
+from recoup.constraints.gate import (
+    ConstraintGate,
+    GateBypassError,
+    GatePass,
+    GateVerdict,
+)
+from recoup.constraints.rules import ConstraintRule, RuleVerdict, default_rules
 
-__all__ = ["BreakerState", "NullBreaker"]
+__all__ = [
+    "BreakerState",
+    "ConstraintGate",
+    "ConstraintRule",
+    "GateBypassError",
+    "GatePass",
+    "GateVerdict",
+    "NullBreaker",
+    "RuleVerdict",
+    "default_rules",
+]
