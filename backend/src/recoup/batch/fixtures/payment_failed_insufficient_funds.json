@@ -1,0 +1,26 @@
+{
+  "entity": "event",
+  "account_id": "acc_MerchantDemo01",
+  "event": "payment.failed",
+  "contains": ["payment"],
+  "id": "evt_pf_insuff_0001",
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_InsuffFundsAB01",
+        "amount": 249900,
+        "currency": "INR",
+        "status": "failed",
+        "method": "card",
+        "error_code": "BAD_REQUEST_ERROR",
+        "error_description": "Your card has insufficient balance to complete this payment.",
+        "card": { "network": "Visa", "issuer": "HDFC" },
+        "notes": { "customer_name": "Ananya Rao" },
+        "contact": "+919876543210",
+        "email": "ananya.rao@example.com",
+        "created_at": 1788426000
+      }
+    }
+  },
+  "created_at": 1788426000
+}

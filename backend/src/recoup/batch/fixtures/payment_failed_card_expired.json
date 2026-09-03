@@ -1,0 +1,24 @@
+{
+  "entity": "event",
+  "account_id": "acc_MerchantDemo01",
+  "event": "payment.failed",
+  "contains": ["payment"],
+  "id": "evt_pf_expired_0003",
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_CardExpiredTx03",
+        "amount": 129900,
+        "currency": "INR",
+        "status": "failed",
+        "method": "card",
+        "error_code": "CARD_EXPIRED",
+        "error_description": "The card has expired.",
+        "card": { "network": "Mastercard", "issuer": "SBI" },
+        "notes": { "customer_name": "Priya Nair" },
+        "created_at": 1788428000
+      }
+    }
+  },
+  "created_at": 1788428000
+}

@@ -1,0 +1,24 @@
+{
+  "entity": "event",
+  "account_id": "acc_MerchantDemo01",
+  "event": "invoice.expired",
+  "contains": ["invoice"],
+  "id": "evt_inv_expired_0005",
+  "payload": {
+    "invoice": {
+      "entity": {
+        "id": "inv_ExpiredInvoice05",
+        "amount": 899900,
+        "currency": "INR",
+        "status": "expired",
+        "error_code": "INVOICE_EXPIRED",
+        "error_description": "The invoice expired before payment was completed.",
+        "notes": { "customer_name": "Neha Joshi" },
+        "contact": "+919845098450",
+        "email": "neha.joshi@example.com",
+        "created_at": 1788430000
+      }
+    }
+  },
+  "created_at": 1788430000
+}

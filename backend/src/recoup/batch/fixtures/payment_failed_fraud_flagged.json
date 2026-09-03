@@ -1,0 +1,27 @@
+{
+  "entity": "event",
+  "account_id": "acc_MerchantDemo01",
+  "event": "payment.failed",
+  "contains": ["payment"],
+  "id": "evt_pf_fraud_0006",
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_FraudFlaggedTx06",
+        "amount": 4999900,
+        "currency": "INR",
+        "status": "failed",
+        "method": "card",
+        "error_code": "PAYMENT_DECLINED",
+        "error_description": "Transaction blocked due to suspected fraudulent card usage.",
+        "card": { "network": "Visa", "issuer": "HDFC" },
+        "fraud_flag": true,
+        "notes": { "customer_name": "Suspicious Actor" },
+        "contact": "+919000000000",
+        "email": "flagged@example.com",
+        "created_at": 1788431000
+      }
+    }
+  },
+  "created_at": 1788431000
+}

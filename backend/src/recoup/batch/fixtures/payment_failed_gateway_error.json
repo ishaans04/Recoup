@@ -1,0 +1,26 @@
+{
+  "entity": "event",
+  "account_id": "acc_MerchantDemo01",
+  "event": "payment.failed",
+  "contains": ["payment"],
+  "id": "evt_pf_gateway_0002",
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_GatewayErrTx02",
+        "amount": 75000,
+        "currency": "INR",
+        "status": "failed",
+        "method": "upi",
+        "error_code": "GATEWAY_ERROR",
+        "error_description": "Payment failed due to a temporary issue at the payment gateway. Please retry.",
+        "bank": "ICICI",
+        "notes": { "customer_name": "Rohit Mehta" },
+        "contact": "+919812345678",
+        "email": "rohit.mehta@example.com",
+        "created_at": 1788427000
+      }
+    }
+  },
+  "created_at": 1788427000
+}

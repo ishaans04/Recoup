@@ -1,0 +1,26 @@
+{
+  "entity": "event",
+  "account_id": "acc_MerchantDemo01",
+  "event": "subscription.halted",
+  "contains": ["subscription"],
+  "id": "evt_sub_halted_0004",
+  "payload": {
+    "subscription": {
+      "entity": {
+        "id": "sub_HaltedMandate04",
+        "amount": 499900,
+        "currency": "INR",
+        "status": "halted",
+        "method": "card",
+        "error_code": "MANDATE_HALTED",
+        "error_description": "Recurring mandate halted after repeated authorization failures.",
+        "card": { "network": "Visa", "issuer": "AXIS" },
+        "notes": { "customer_name": "Karan Verma" },
+        "contact": "+919900112233",
+        "email": "karan.verma@example.com",
+        "created_at": 1788429000
+      }
+    }
+  },
+  "created_at": 1788429000
+}

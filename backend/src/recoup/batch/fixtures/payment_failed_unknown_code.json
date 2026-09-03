@@ -1,0 +1,26 @@
+{
+  "entity": "event",
+  "account_id": "acc_MerchantDemo01",
+  "event": "payment.failed",
+  "contains": ["payment"],
+  "id": "evt_pf_unknown_0007",
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_UnknownCodeTx07",
+        "amount": 199900,
+        "currency": "INR",
+        "status": "failed",
+        "method": "netbanking",
+        "error_code": "XYZ_UNRECOGNIZED_9001",
+        "error_description": "An unrecognized error occurred during payment processing.",
+        "bank": "Kotak Mahindra Bank",
+        "notes": { "customer_name": "Devika Iyer" },
+        "contact": "+919871234567",
+        "email": "devika.iyer@example.com",
+        "created_at": 1788432000
+      }
+    }
+  },
+  "created_at": 1788432000
+}
