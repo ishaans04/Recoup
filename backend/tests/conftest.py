@@ -7,12 +7,18 @@ fresh and discarded with the test.
 
 import tempfile
 from collections.abc import Iterator
+from datetime import datetime
 
 import pytest
 from sqlalchemy import Engine
 
+from recoup.clock import IST
 from recoup.config import Settings
+from recoup.domain.enums import State
+from recoup.domain.models import AuditEvent
 from recoup.storage.db import create_engine_for, init_schema
+
+CREATED_AT = datetime(2026, 9, 3, 14, 32, 5, tzinfo=IST)
 
 
 @pytest.fixture
@@ -49,3 +55,18 @@ def engine() -> Iterator[Engine]:
             yield test_engine
         finally:
             test_engine.dispose()
+
+
+def make_audit_event(**overrides: object) -> AuditEvent:
+    """A realistic, insertable audit event; override only the field under test."""
+    fields: dict[str, object] = {
+        "timestamp": CREATED_AT,
+        "txn_id": "pay_QjK9x2LmN4TzAb",
+        "to_state": State.DETECTED,
+        "rationale": "Webhook payment.failed accepted; work item created.",
+    }
+    fields.update(overrides)
+    return AuditEvent(**fields)  # type: ignore[arg-type]
+
+
+__all__ = ["CREATED_AT", "make_audit_event"]

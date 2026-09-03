@@ -1,17 +1,18 @@
 """Persistence: the SQLAlchemy schema, database-enforced audit-trail immutability,
-schema initialisation, and the transactional unit of work (PRD sections 8.6, 9.6
-and 10).
+schema initialisation, the transactional unit of work, and the append-only audit
+log (PRD sections 8.6, 9.6 and 10).
 
-This package grows through Phase 1 into the full boundary between the domain
-model and the database: the audit log and the work-item repository land here
-next, both built on :func:`~recoup.storage.db.unit_of_work`.
+The work-item repository lands here next, built on the same
+:func:`~recoup.storage.db.unit_of_work` primitive as :class:`~recoup.storage.audit.AuditLog`.
 """
 
+from recoup.storage.audit import AuditLog
 from recoup.storage.db import create_engine_for, init_schema, unit_of_work
 from recoup.storage.tables import AuditEventRow, Base, WorkItemRow
 
 __all__ = [
     "AuditEventRow",
+    "AuditLog",
     "Base",
     "WorkItemRow",
     "create_engine_for",
