@@ -163,13 +163,70 @@ both directly in SQL and watches them fail.
 
 ---
 
+### Phase 2 — The state machine & orchestrator
+_Status: complete_
+
+Satisfies PRD §4 (recovery is a state machine, not a chatbot), §7.4 (the
+single-transaction lifecycle), §8.2 (the orchestrator never calls external
+services directly), §12.2 (the stopping rule).
+
+Phase 2 is the skeleton the whole recovery loop runs on. Its value is not that
+transitions happen but that **illegal transitions are impossible and every legal
+transition is atomically audited** — the two properties that separate Recoup from
+an LLM agent loop.
+
+#### Added
+
+- `recoup.fsm.states` — `LEGAL_TRANSITIONS`, the exhaustive closed edge set of
+  PRD §7.4, plus `is_terminal` and `legal_next`. Exhaustive over `State`: a state
+  added later without a transition rule fails the exhaustiveness test rather than
+  silently becoming an unreachable dead end. The `EXECUTED → ACTION_CHOSEN` retry
+  edge is permitted unconditionally; the constraint gate (Phase 6) decides how
+  many times it is walked, so no policy (a retry cap, a time, an amount) leaks
+  into the pure state table.
+- `recoup.fsm.machine.StateMachine.transition` — the one place a work item's
+  state may change. Validates before mutating (terminal check first — §12.2's
+  stopping rule; then the legal-transition check — §7.4; then a non-empty
+  rationale — §8.6), then checkpoints the work item and appends its audit row
+  inside one `unit_of_work`, so a state change can never persist without the row
+  that explains it. `retry_count` increments only on `EXECUTED → ACTION_CHOSEN`;
+  the method returns a fresh `WorkItem` rather than mutating the caller's
+  instance, so a rejected transition can never leave a half-applied object in a
+  caller's hands. `IllegalTransition` and `TerminalStateError` both name the
+  states involved.
+- `recoup.fsm.orchestrator.Orchestrator` — drives one audited transition per
+  `advance()` call through three injected collaborators (`diagnose`,
+  `select_action`, `check_and_execute`), and so imports nothing from
+  `recoup.gateways`, `recoup.channels` or `recoup.diagnosis` (§8.2) — a property
+  an AST test enforces, not just the docstring. `run_to_completion` is bounded:
+  an item that will not settle raises rather than looping. `GateOutcome` and
+  `OrchestratorDeps` define the shapes Phase 6 supplies for real.
+- 27 new unit tests (`test_fsm_states.py`, `test_state_machine.py`,
+  `test_orchestrator.py`) — 204 unit tests total.
+
+#### Decisions
+
+- One `check_and_execute` result is threaded across the two separately-audited
+  `CONSTRAINT_CHECKED` and `EXECUTED` transitions via a small process-local cache
+  keyed by `txn_id`, rather than through the `WorkItem` (whose model is closed
+  with `extra="forbid"` and carries no scratch field). The durable record of what
+  the gate decided is already the `constraint_result`/`constraint_reason`/`outcome`
+  written to the audit log by each transition, so nothing about the trail's
+  completeness depends on this cache surviving a restart.
+- A bug in the salvaged orchestrator — the gate outcome was re-cached on the
+  deferred (`SCHEDULED`) path but not on the executed path, so the `EXECUTED` step
+  could not find it — was caught by the new happy-path test and fixed by
+  re-caching the outcome before the `CONSTRAINT_CHECKED → EXECUTED` transition.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
 |---|-------|--------------|--------|
 | 0 | Project foundation & domain vocabulary | §9, §10.1, §10.2, §17 | complete |
 | 1 | Persistence & append-only audit trail | §8.6, §9.6, §10.2, §14 | complete |
-| 2 | State machine & orchestrator | §4, §7.4, §8.2 | pending |
+| 2 | State machine & orchestrator | §4, §7.4, §8.2 | complete |
 | 3 | Ingestion: signature, normalization, idempotency | §8.1, §13.2, §14 | pending |
 | 4 | Diagnosis engine: Tier-1 rules + two-tier composition | §11, §13.2 | pending |
 | 5 | Action selector, retry timing, channel policy | §10.3, §11.4, §8.7 | pending |
