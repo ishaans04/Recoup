@@ -195,6 +195,81 @@ export interface BatchRun {
   metrics: Omit<Metrics, "in_flight" | "by_cause" | "by_channel" | "generated_at"> | null;
 }
 
+/* -------------------------------------------------------------------------- */
+/* REST envelopes                                                              */
+/* -------------------------------------------------------------------------- */
+
+/** `GET /api/workitems` — cursor-paginated, newest first. */
+export interface WorkItemsResponse {
+  items: WorkItem[];
+  next_cursor: string | null;
+  total: number;
+}
+
+/** `GET /api/workitems/{txn_id}/audit` — one work item's full transition history, oldest first. */
+export interface WorkItemAuditResponse {
+  txn_id: string;
+  events: AuditEvent[];
+}
+
+/** `GET /api/audit` — the global append-only stream, oldest first. */
+export interface AuditFeedResponse {
+  events: AuditEvent[];
+  last_id: number;
+}
+
+/** `GET /api/escalations` — every work item in ESCALATED, newest first. */
+export interface EscalationsResponse {
+  escalations: Escalation[];
+  total: number;
+}
+
+/**
+ * The exception list the dashboard owes the judge per PRD 13.4: every
+ * transaction the batch could not resolve, with a reason. The contract has no
+ * endpoint named `exceptions` — `ESCALATED` is the only terminal "did not
+ * recover" state, so an `Escalation` already carries everything an exception
+ * row needs (see the phase 10 report for the full reasoning). The alias exists
+ * so the UI and its tests can talk about "exceptions" without pretending this
+ * is a second, distinct shape.
+ */
+export type ExceptionRecord = Escalation;
+
+/** `POST /api/batch/run` request body. */
+export interface BatchRunRequest {
+  size?: number;
+  seed?: number;
+}
+
+/** `POST /api/batch/run` — 202, batch accepted and running. */
+export interface BatchRunAccepted {
+  run_id: string;
+  size: number;
+  seed: number | null;
+  status: "running";
+  started_at: string;
+}
+
+/** `POST /api/demo/inject` request body. Only the first three fields are required. */
+export interface DemoInjectRequest {
+  amount_paise: number;
+  failure_code: string;
+  failure_message: string;
+  failure_type?: FailureType;
+  method?: string | null;
+  issuer?: string | null;
+  fraud_flag?: boolean;
+  customer?: Customer;
+}
+
+/** `POST /api/demo/inject` — 201. */
+export interface DemoInjectResponse {
+  txn_id: string;
+  event_id: string;
+  state: State;
+  accepted_at: string;
+}
+
 export interface HealthResponse {
   status: "ok";
   /** Mirrors RECOUP_MODE. A mocked run must not be mistakable for a live one. */
@@ -299,20 +374,10 @@ export type WsMessage =
 /* -------------------------------------------------------------------------- */
 
 /**
- * Format integer paise as rupees for display.
- *
- * The only place a monetary value stops being an integer, and it stops being one
- * on its way to the screen and nowhere else. Nothing computed from this value is
- * ever sent back to the backend.
+ * All money formatting lives in `./format.ts`, not here, because it needs unit
+ * coverage of Indian lakh grouping (`formatPaise`) that belongs next to the
+ * rest of the display-formatting utilities rather than the contract mirror.
  */
-export function formatPaise(paise: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(paise / 100);
-}
 
 /** Turn any contract enum value into a human label, including unrecognised ones. */
 export function humanise(value: string): string {
