@@ -360,6 +360,62 @@ alone.
 
 ---
 
+### Phase 6 — The constraints gate (the credibility layer)
+_Status: complete_
+
+Satisfies PRD §12 in full (the policy gate pattern, the enforced constraints,
+centralization, the visible rejection), plus §14 (bounded autonomy, human
+escalation) and §8.6 (every evaluation recorded).
+
+The single most important phase for the pitch. It turns PRD §12.3's claim — "with
+exactly one gate, it's provable" — from an organizing principle into a mechanical
+fact enforced by an unforgeable token and an AST test that fails the build if a
+second door is ever opened.
+
+#### Added
+
+- `recoup.money` — `format_inr_paise` / `group_indian`, lakh-grouped rupee
+  rendering (`Rs 75,000`, `Rs 1,20,500`). Reused by Phase 8's report.
+- `recoup.constraints.rules` — one pure `ConstraintRule` per PRD §12.2 row
+  (`retry_cap`, `amount_cap`, `fraud_block`, `terminal_stop`, `circuit_open`,
+  `channel_available`), each returning a `RuleVerdict(passed, rule_id, reason)`.
+  A rule that does not apply to an action still runs and returns a passing verdict
+  that says so, so the audit log records that every constraint was considered. The
+  amount-cap breach renders exactly `amount_cap: Rs 75,000 > Rs 50,000` (§12.4,
+  §16.5). `default_rules(...)` assembles the set; `circuit_open` binds a
+  `BreakerState` (defaulting to `NullBreaker`, replaced by Phase 7).
+- `recoup.constraints.gate.ConstraintGate` — evaluates **every** rule (so a
+  refusal shows all its causes at once) and mints a `GatePass` only when all pass.
+  The pass carries an HMAC over `txn_id | action_fingerprint | checked_at`, keyed
+  by a per-process secret held name-mangled and never logged. `verify` rejects a
+  forged token, a pass minted for another transaction or another action, and a
+  stale pass, raising `GateBypassError`.
+- `recoup.execution.executor.ActionExecutor` — verifies the pass as its first
+  statement, then resolves and runs a channel; the **only** module that imports
+  `recoup.channels`. `recoup.execution.pipeline.GatePipeline` composes gate and
+  executor into the orchestrator's `check_and_execute`, producing one of four
+  `GateOutcome`s: refuse, escalate-by-policy, defer, execute.
+- `tests/architecture/test_single_door.py` — AST tests that fail the build if any
+  module outside the executor imports the channels package, or if `GatePass` is
+  constructed outside the gate. Plus `tests/integration/test_gate_orchestration.py`,
+  driving over-cap and fraud items to `ESCALATED` through the real, fully-composed
+  stack with a spy channel proving nothing ran.
+- 43 new tests (`test_money.py`, `test_constraints.py`, `test_executor.py`,
+  2 architecture, 2 integration) — 389 tests total.
+
+#### Decisions
+
+- The amount cap applies to retries **and** nudges (a nudge sends a payment link
+  for the full amount), but not to `NO_ACTION`/`ESCALATE`, which move no money.
+- The pipeline realigns an action's `attempt` to the item's `retry_count` before
+  gating, so a reused action on the retry loop gets a fresh fingerprint and (in
+  Phase 7) a fresh idempotency key rather than silently deduplicating.
+- `circuit_open` builds its route key through `FailureContext.route`, byte-for-byte
+  the key Phase 7's breaker and retry channel count against, so the gate and the
+  breaker can never disagree about what a route is.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -370,7 +426,7 @@ alone.
 | 3 | Ingestion: signature, normalization, idempotency | §8.1, §13.2, §14 | complete |
 | 4 | Diagnosis engine: Tier-1 rules + two-tier composition | §11, §13.2 | complete |
 | 5 | Action selector, retry timing, channel policy | §10.3, §11.4, §8.7 | complete |
-| 6 | Constraints gate & escalation | §12 | pending |
+| 6 | Constraints gate & escalation | §12 | complete |
 | 7 | Payment gateway adapter, mock & circuit breaker | §8.4, §9.3, §11.4, §13.1 | pending |
 | 8 | End-to-end batch & honest metrics | §5.1, §7.4, §13.4, §15.1 | pending |
 | 9 | FastAPI: webhooks, REST, WebSocket | §8.1, §8.8, §9.5, §14 | pending |
