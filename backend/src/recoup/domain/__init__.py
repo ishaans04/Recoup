@@ -13,12 +13,36 @@ from recoup.domain.enums import (
     FailureType,
     State,
 )
+from recoup.domain.models import (
+    Action,
+    AuditEvent,
+    ChannelResult,
+    Confidence,
+    Customer,
+    Diagnosis,
+    ExecutionResult,
+    FailureContext,
+    PaiseInt,
+    RecoupModel,
+    WorkItem,
+)
 
 __all__ = [
     "TERMINAL_STATES",
+    "Action",
     "ActionType",
+    "AuditEvent",
     "Cause",
     "Channel",
+    "ChannelResult",
+    "Confidence",
+    "Customer",
+    "Diagnosis",
+    "ExecutionResult",
+    "FailureContext",
     "FailureType",
+    "PaiseInt",
+    "RecoupModel",
     "State",
+    "WorkItem",
 ]
