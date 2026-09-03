@@ -268,6 +268,53 @@ Razorpay account required.
 
 ---
 
+### Phase 4 — The diagnosis engine: Tier-1 rules & two-tier composition
+_Status: complete_
+
+Satisfies PRD §11 (the intelligence layer — root-cause diagnosis), §13.1 (degrade
+when the LLM is unavailable), §13.2 (a malformed model output never triggers a
+money action).
+
+The whole two-tier engine — confidence routing and every LLM failure mode — is
+built and tested here against a fake. Phase 11 only swaps a real Groq client in
+behind the existing `LLMClient` protocol, so the moat is finished and provably
+correct before a single API key exists.
+
+#### Added
+
+- `recoup.diagnosis.rules.RulesTable` — Tier 1. Maps known Razorpay failure codes
+  to a `Cause` (confidence 1.0, source `rules`) via exact-code match first, then
+  case-insensitive pattern match against code and message. Rule ordering
+  guarantees a fraud signal is never shadowed by the broader soft-decline rule —
+  a misrouted fraud case would be *acted on* instead of blocked, so a dedicated
+  test pins the ordering. Covers all five PRD §5.1 classes.
+- `recoup.diagnosis.engine.DiagnosisEngine` — the two-tier composition.
+  `diagnose(item)` resolves a known fraud flag first (a hard block never depends
+  on the PSP also sending a fraud-shaped code), then Tier 1 (returning without
+  ever calling the LLM — the PRD §11.2 property, asserted on the fake's call
+  count), then Tier 2 only for the unrecognised tail, then a safe fallback. A
+  `None`/absent LLM, a raised exception, or a sub-threshold confidence all become
+  `Cause.UNKNOWN` with a *specific* rationale (§11.3). `FailureContext` strips all
+  customer, merchant and identifier data before either tier sees it. Counters
+  (`tier1_hits`, `tier2_calls`, `fallbacks`) feed the Phase 8 batch report.
+- `backend/tests/fakes.py` — `FakeLLM` (fixed result, per-call `results` queue,
+  raising, or `None`) plus a shared `make_work_item` factory.
+- 29 new unit tests (`test_diagnosis.py`) — 276 unit tests total.
+
+#### Decisions
+
+- Salvaged test bugs, fixed: `test_llm_none_falls_back...` lowercased the haystack
+  but not the needle (`"no LLM"` vs `"no llm"`); the mixed-batch test needed a
+  `results` queue on `FakeLLM` that did not exist yet. Both were caught by running
+  the suite; the fake gained a `results` parameter (at most one of
+  `result`/`results`) and the assertion was corrected.
+- Formatting: the salvaged files were lint-clean (`ruff check`) but not
+  formatter-clean (`ruff format`). Only the Phase 4 files were formatted, to keep
+  this phase's diff scoped; a tree-wide `ruff format` and a `--check` CI gate are
+  deferred to Phase 15's hygiene sweep.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -276,7 +323,7 @@ Razorpay account required.
 | 1 | Persistence & append-only audit trail | §8.6, §9.6, §10.2, §14 | complete |
 | 2 | State machine & orchestrator | §4, §7.4, §8.2 | complete |
 | 3 | Ingestion: signature, normalization, idempotency | §8.1, §13.2, §14 | complete |
-| 4 | Diagnosis engine: Tier-1 rules + two-tier composition | §11, §13.2 | pending |
+| 4 | Diagnosis engine: Tier-1 rules + two-tier composition | §11, §13.2 | complete |
 | 5 | Action selector, retry timing, channel policy | §10.3, §11.4, §8.7 | pending |
 | 6 | Constraints gate & escalation | §12 | pending |
 | 7 | Payment gateway adapter, mock & circuit breaker | §8.4, §9.3, §11.4, §13.1 | pending |
