@@ -315,6 +315,51 @@ correct before a single API key exists.
 
 ---
 
+### Phase 5 — Action selector, retry timing & channel policy
+_Status: complete_
+
+Satisfies PRD §10.3 (the cause-to-action table), §11.4 (timing intelligence),
+§8.7 (channel selection as intelligence), §13.2 (missing-contact handling).
+
+Where the product thesis becomes code: three different causes must produce three
+genuinely different interventions. This layer decides **what** to do; it never
+decides **whether** it is allowed — that authority belongs to Phase 6's gate
+alone.
+
+#### Added
+
+- `recoup.policy.timing` — pure, clock-free retry scheduling. `next_retry_at`
+  schedules an insufficient-funds retry for the next salary-cycle moment (this
+  month's last day or next month's 1st, whichever is sooner — correct across
+  28/29/30/31-day months and year rollover), gateway degradation with capped
+  exponential backoff and deterministic jitter, and a soft decline with a short
+  fixed delay. Every result is clamped into the 10:00–20:00 IST retry window;
+  `is_within_retry_window` and `clamp_to_retry_window` are exposed and tested.
+  A non-retryable cause raises rather than inventing a schedule.
+- `recoup.policy.channel_policy.choose_channel_chain` — the ordered nudge chain
+  from value (high-value lapsed mandate + phone → voice leads) and reachability
+  (a channel the customer cannot receive is never offered). No contact yields an
+  empty chain, the answer the escalation path distinguishes from a failed nudge.
+- `recoup.policy.selector` — `select_action` implements PRD §10.3 exactly, and
+  `chain_for` exposes the full fallback chain for Phase 13's router. Two safety
+  properties hold regardless of diagnosis: a fraud flag always yields
+  `NO_ACTION`, and an unrecognised cause escalates rather than being guessed.
+- 70 new unit tests (`test_timing.py`, `test_channel_policy.py`,
+  `test_selector.py`) — 346 unit tests total.
+
+#### Decisions
+
+- The Phase 5 agent died before writing any tests, so all three test files were
+  written fresh against the salvaged (correct) source. The brief's example "from
+  the 29th → 1st of next month" was imprecise: "whichever salary moment is sooner"
+  makes the 29th of a 30-day month schedule the 30th, not next month's 1st. Tests
+  pin the mathematically correct behaviour.
+- `select_action` and `chain_for` take `diagnosis` as an explicit argument rather
+  than reading `item.diagnosis`, because the orchestrator may call them before the
+  diagnosis is persisted onto the item.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -324,7 +369,7 @@ correct before a single API key exists.
 | 2 | State machine & orchestrator | §4, §7.4, §8.2 | complete |
 | 3 | Ingestion: signature, normalization, idempotency | §8.1, §13.2, §14 | complete |
 | 4 | Diagnosis engine: Tier-1 rules + two-tier composition | §11, §13.2 | complete |
-| 5 | Action selector, retry timing, channel policy | §10.3, §11.4, §8.7 | pending |
+| 5 | Action selector, retry timing, channel policy | §10.3, §11.4, §8.7 | complete |
 | 6 | Constraints gate & escalation | §12 | pending |
 | 7 | Payment gateway adapter, mock & circuit breaker | §8.4, §9.3, §11.4, §13.1 | pending |
 | 8 | End-to-end batch & honest metrics | §5.1, §7.4, §13.4, §15.1 | pending |
