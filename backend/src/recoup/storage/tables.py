@@ -7,9 +7,7 @@ mutable working state and an immutable record of how it got there:
 :class:`~recoup.domain.models.WorkItem`, updated in place as the state machine
 advances it. ``audit_events`` is the append-only history of every transition any
 work item has ever made — one row per :class:`~recoup.domain.models.AuditEvent`,
-inserted and never touched again. (The append-only enforcement itself — the
-triggers that make ``audit_events`` physically refuse an ``UPDATE`` or a
-``DELETE`` — is attached separately; see the top of this file once that lands.)
+inserted and never touched again.
 
 **Postgres compatibility.** PRD section 9.6's pitch is "SQLite for the demo,
 Postgres in production, same schema", so every column type here is one both
@@ -19,6 +17,47 @@ MySQL neither dialect requires a length), :class:`~sqlalchemy.JSON`,
 :class:`~sqlalchemy.Integer` and :class:`~sqlalchemy.BigInteger`. Nothing here is a
 SQLite-only affinity trick or a Postgres-only extension type — swapping
 ``database_url`` to a ``postgresql://`` DSN is the entire migration.
+
+**Append-only enforcement.** ``audit_events`` carries two triggers, attached via
+``sqlalchemy.event.listen(AuditEventRow.__table__, "after_create", DDL(...))`` so
+they are created in the same DDL pass as the table itself and cannot be forgotten.
+On SQLite:
+
+.. code-block:: sql
+
+    CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON audit_events
+    BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END;
+
+    CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON audit_events
+    BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END;
+
+The Postgres equivalent is not the same syntax — Postgres triggers call a
+``plpgsql`` function rather than inlining ``RAISE`` — so it is a second, separate
+DDL statement, guarded to run only on the ``postgresql`` dialect:
+
+.. code-block:: sql
+
+    CREATE OR REPLACE FUNCTION audit_events_block_mutation() RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'audit_events is append-only';
+    END;
+    $$ LANGUAGE plpgsql;
+
+    CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON audit_events
+    FOR EACH ROW EXECUTE FUNCTION audit_events_block_mutation();
+
+    CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON audit_events
+    FOR EACH ROW EXECUTE FUNCTION audit_events_block_mutation();
+
+    REVOKE UPDATE, DELETE ON audit_events FROM PUBLIC;
+
+The ``REVOKE`` is belt-and-braces: it removes the privilege from the default
+``PUBLIC`` role so that a connection which was never granted ``UPDATE``/``DELETE``
+explicitly cannot exercise it even if the trigger were somehow dropped. A
+production role should be granted ``SELECT, INSERT`` on this table and nothing
+more. This project has no Postgres instance to run against, so the SQLite path is
+the one exercised by the test suite; the Postgres DDL is written to the same
+contract and guarded by dialect so it can never fire during a SQLite test.
 """
 
 from datetime import UTC, datetime
@@ -26,7 +65,9 @@ from typing import Any
 
 from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, Integer, String, TypeDecorator
 from sqlalchemy.engine.interfaces import Dialect
+from sqlalchemy.event import listen
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.schema import DDL
 
 __all__ = ["AuditEventRow", "Base", "UTCDateTime", "WorkItemRow"]
 
@@ -144,3 +185,89 @@ class AuditEventRow(Base):
     constraint_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     outcome: Mapped[str | None] = mapped_column(String, nullable=True)
     rationale: Mapped[str] = mapped_column(String, nullable=False)
+
+
+def _ddl(text: str) -> DDL:
+    """Construct a :class:`~sqlalchemy.schema.DDL` clause.
+
+    A thin, typed wrapper: ``DDL.__init__`` itself has no type annotations, so
+    every direct call is an ``[no-untyped-call]`` error under mypy strict.
+    Isolating the one ``type: ignore`` here means every DDL statement below stays
+    fully checked everywhere else.
+    """
+    return DDL(text)  # type: ignore[no-untyped-call]
+
+
+_SQLITE_NO_UPDATE = _ddl(
+    """
+    CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON audit_events
+    BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END;
+    """
+)
+
+_SQLITE_NO_DELETE = _ddl(
+    """
+    CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON audit_events
+    BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END;
+    """
+)
+
+_POSTGRES_GUARD_FUNCTION = _ddl(
+    """
+    CREATE OR REPLACE FUNCTION audit_events_block_mutation() RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'audit_events is append-only';
+    END;
+    $$ LANGUAGE plpgsql;
+    """
+)
+
+_POSTGRES_NO_UPDATE = _ddl(
+    """
+    CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON audit_events
+    FOR EACH ROW EXECUTE FUNCTION audit_events_block_mutation();
+    """
+)
+
+_POSTGRES_NO_DELETE = _ddl(
+    """
+    CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON audit_events
+    FOR EACH ROW EXECUTE FUNCTION audit_events_block_mutation();
+    """
+)
+
+_POSTGRES_REVOKE = _ddl("REVOKE UPDATE, DELETE ON audit_events FROM PUBLIC;")
+
+# Attached to "after_create" so the triggers exist the instant the table does —
+# there is no window between `init_schema` creating `audit_events` and the table
+# becoming genuinely append-only.
+listen(
+    AuditEventRow.__table__,
+    "after_create",
+    _SQLITE_NO_UPDATE.execute_if(dialect="sqlite"),
+)
+listen(
+    AuditEventRow.__table__,
+    "after_create",
+    _SQLITE_NO_DELETE.execute_if(dialect="sqlite"),
+)
+listen(
+    AuditEventRow.__table__,
+    "after_create",
+    _POSTGRES_GUARD_FUNCTION.execute_if(dialect="postgresql"),
+)
+listen(
+    AuditEventRow.__table__,
+    "after_create",
+    _POSTGRES_NO_UPDATE.execute_if(dialect="postgresql"),
+)
+listen(
+    AuditEventRow.__table__,
+    "after_create",
+    _POSTGRES_NO_DELETE.execute_if(dialect="postgresql"),
+)
+listen(
+    AuditEventRow.__table__,
+    "after_create",
+    _POSTGRES_REVOKE.execute_if(dialect="postgresql"),
+)
