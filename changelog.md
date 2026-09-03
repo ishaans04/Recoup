@@ -220,6 +220,54 @@ an LLM agent loop.
 
 ---
 
+### Phase 3 — Ingestion: signature verification, normalization, idempotency
+_Status: complete_
+
+Satisfies PRD §8.1 (webhook ingestion, live and batch on one code path), §13.2
+(duplicate-delivery deduplication), §14 (no unsigned payload processed).
+
+The front door, and a security boundary. HTTP transport is deferred to Phase 9;
+this phase is the pure, fully unit-testable logic behind it — no server or
+Razorpay account required.
+
+#### Added
+
+- `recoup.ingestion.signature` — `verify_razorpay_signature(body, header, secret)`
+  compares an HMAC-SHA256 hex digest of the **raw body** with `hmac.compare_digest`
+  (no timing side-channel), rejecting an empty/`None` secret or a
+  non-hex/`None` header with `False` rather than raising or validating.
+  `compute_razorpay_signature` lets tests produce genuine signatures without an
+  account and is reused by Phase 12 for live deliveries.
+- `recoup.ingestion.normalize` — `normalize(payload, clock)` reads Razorpay's
+  envelope in the one place the system ever does, producing a `WorkItem`. Keeps
+  the envelope `id` (`event_id`, the idempotency key) distinct from the entity
+  `id` (`txn_id`); copies amounts as paise without dividing; rejects `bool` where
+  an `int` is required; extracts `method`/`issuer` for the breaker route key;
+  treats missing customer contact as legal (Phase 5 escalates on it). Raises
+  `MalformedPayload`/`UnsupportedEvent` before constructing anything.
+- `recoup.ingestion.idempotency.Ingestor` — `ingest_raw(body, header)` verifies
+  the signature **before** parsing JSON (unauthenticated bytes are never parsed),
+  and rejects when no secret is configured rather than skipping the check;
+  `ingest_payload(payload)` is the trusted batch/replay path, sharing the same
+  `normalize` + `create_if_absent` code as the HTTP path so live and batch runs
+  are identical (§8.1). Deduplication rides Phase 1's database-enforced `event_id`
+  uniqueness.
+- Seven Razorpay-shaped webhook fixtures in `recoup/batch/fixtures/` spanning
+  insufficient funds, gateway error, expired card, halted subscription, expired
+  invoice, fraud-flagged and unknown-code — reused by Phases 8, 9 and 12.
+- 70 new unit tests (`test_signature.py`, `test_normalize.py`,
+  `test_ingestion.py`) — 247 unit tests total.
+
+#### Decisions
+
+- A missing customer *name* is filled with a placeholder rather than rejected,
+  mirroring §13.2's treatment of missing *contact*: an incomplete merchant record
+  should not make a real failure un-ingestable.
+- `subscription.charged` normalizes only when it reports a failed charge; a
+  successful one raises `UnsupportedEvent` — it is not a failure to recover from.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -227,7 +275,7 @@ an LLM agent loop.
 | 0 | Project foundation & domain vocabulary | §9, §10.1, §10.2, §17 | complete |
 | 1 | Persistence & append-only audit trail | §8.6, §9.6, §10.2, §14 | complete |
 | 2 | State machine & orchestrator | §4, §7.4, §8.2 | complete |
-| 3 | Ingestion: signature, normalization, idempotency | §8.1, §13.2, §14 | pending |
+| 3 | Ingestion: signature, normalization, idempotency | §8.1, §13.2, §14 | complete |
 | 4 | Diagnosis engine: Tier-1 rules + two-tier composition | §11, §13.2 | pending |
 | 5 | Action selector, retry timing, channel policy | §10.3, §11.4, §8.7 | pending |
 | 6 | Constraints gate & escalation | §12 | pending |
