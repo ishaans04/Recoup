@@ -416,6 +416,48 @@ second door is ever opened.
 
 ---
 
+### Phase 7 — Payment gateway adapter, mock & circuit breaker
+_Status: complete_
+
+Satisfies PRD §8.4 (the adapter and its mockability), §9.3 (swappable PSP behind
+the port), §11.4 and §13.1 (the circuit breaker), and feeds §8.7 (the retry
+channel behind the recovery-channel interface).
+
+Two things at once: the adapter boundary that lets a real PSP be swapped in without
+touching core logic, proven by a shared conformance suite; and a genuine
+three-state circuit breaker that stops Recoup hammering a degraded route.
+
+#### Added
+
+- `recoup.gateways.circuit_breaker.CircuitBreaker` — canonical
+  `CLOSED`/`OPEN`/`HALF_OPEN`, keyed per `method:issuer` route so one degraded
+  issuer never bars healthy banks. Ages on the injected clock (never wall time),
+  so the Phase 8 fast-forward resolves cooldowns; `is_open` is `False` in
+  `HALF_OPEN` so one trial call probes recovery; `snapshot()` feeds the dashboard.
+  Satisfies `BreakerState`, dropping into the gate where `NullBreaker` sat.
+- `recoup.gateways.mock.MockGateway` — a `PaymentGateway` with three levers a real
+  gateway lacks: per-transaction scripting (`succeeds_on_attempt`), on-demand route
+  degradation (trips the breaker without a real outage, §8.4), and a recorded call
+  log. Idempotent by key and deterministic under its seed, so batches reproduce.
+- `recoup.channels.retry.PaymentRetryChannel` — re-presents a failed payment and
+  feeds every outcome to the breaker. Its idempotency key is a pure function of txn
+  and attempt (a crash-and-retry cannot double-charge); a gateway exception is
+  caught, recorded as a breaker failure, and returned as a bounded non-recovery.
+- `tests/contract/test_payment_gateway.py` — the shared conformance suite,
+  parameterized over gateway implementations. Phase 12 adds `RazorpayGateway` to
+  the one factory dict and reruns it unchanged.
+- 29 new tests (`test_circuit_breaker.py`, `test_retry_channel.py`,
+  `test_mock_gateway.py`, 6 contract) — 418 tests total.
+
+#### Decisions
+
+- The salvaged breaker was complete and correct but never linted; a nested-`if` in
+  its cooldown aging was flattened to satisfy `ruff`, no behaviour change.
+- `MockGateway.calls` deliberately excludes idempotent replays, so a test asserting
+  "exactly one charge despite two execute calls" reads directly off the call log.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -427,7 +469,7 @@ second door is ever opened.
 | 4 | Diagnosis engine: Tier-1 rules + two-tier composition | §11, §13.2 | complete |
 | 5 | Action selector, retry timing, channel policy | §10.3, §11.4, §8.7 | complete |
 | 6 | Constraints gate & escalation | §12 | complete |
-| 7 | Payment gateway adapter, mock & circuit breaker | §8.4, §9.3, §11.4, §13.1 | pending |
+| 7 | Payment gateway adapter, mock & circuit breaker | §8.4, §9.3, §11.4, §13.1 | complete |
 | 8 | End-to-end batch & honest metrics | §5.1, §7.4, §13.4, §15.1 | pending |
 | 9 | FastAPI: webhooks, REST, WebSocket | §8.1, §8.8, §9.5, §14 | pending |
 | 10 | Next.js dashboard | §8.8, §9.4, §12.4, §15.1 | pending |
