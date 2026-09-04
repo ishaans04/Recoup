@@ -660,6 +660,46 @@ supplies the one real client it composes, and changes nothing about the engine.
 
 ---
 
+### Phase 12 — Razorpay live adapter
+_Status: complete_
+
+Satisfies PRD §9.3 (a second PSP behind the port, proven by the shared contract
+suite) and §13.1 (typed errors, never a silently dropped work item). CREDENTIAL GATE:
+`RAZORPAY_KEY_ID` / `_KEY_SECRET` / `_WEBHOOK_SECRET` (absent → mock mode).
+
+Phase 7 built the adapter boundary; this phase proves it was real. `RazorpayGateway`
+passes the identical contract suite `MockGateway` does, unmodified.
+
+#### Added
+
+- `recoup.gateways.razorpay.RazorpayGateway` — the `PaymentGateway` protocol against
+  Razorpay's documented REST API over `httpx` (no SDK dependency). Recovery is a
+  re-collection **payment link** carrying the idempotency key (a replay returns the
+  same link, never a second charge); `recovered` is read from the link's status.
+  Amounts stay in integer paise. Typed errors: `GatewayUnavailable` (timeout/5xx,
+  retryable), `GatewayRejected` (4xx), `UnknownTransaction` (a `LookupError`, from
+  both a 404 and the live 400 "id does not exist"). Credentials never logged or
+  raised. An injectable transport lets the contract suite exercise the real adapter.
+- `recoup.gateways.factory.build_gateway_for` — `RECOUP_MODE=live` + keys →
+  `RazorpayGateway`, else the mock (live-without-keys warns, never crashes).
+- `docs/razorpay-setup.md` — the ngrok + webhook + failure-test-card runbook.
+- 10 respx unit tests, plus `RazorpayGateway` added to the shared contract suite
+  (now 6 tests × 2 gateways). 481 tests total.
+
+#### Decisions
+
+- **Live-verified against the real Razorpay API** with the test keys: the credentials
+  authenticate, and an unknown payment id maps correctly to `UnknownTransaction`. The
+  observed live behaviour (an unknown id returns a 400 "The id provided does not
+  exist", not a 404) drove the error mapping.
+- The shared contract suite runs `RazorpayGateway` over an injected `httpx`
+  transport, because the suite's fixed transaction ids (`pay_ContractAB01`) exist in
+  no real account — this proves the adapter maps Razorpay's shapes to the contract
+  deterministically, with the assertions unchanged. A genuinely live webhook run is
+  the manual flow in `docs/razorpay-setup.md`. Tests always use the mock.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -676,7 +716,7 @@ supplies the one real client it composes, and changes nothing about the engine.
 | 9 | FastAPI: webhooks, REST, WebSocket | §8.1, §8.8, §9.5, §14 | complete |
 | 10 | Next.js dashboard | §8.8, §9.4, §12.4, §15.1 | complete |
 | 11 | Groq LLM Tier-2 diagnosis | §9.2, §11.1, §13.1 | complete |
-| 12 | Razorpay live adapter | §9.3, §13.1 | pending |
+| 12 | Razorpay live adapter | §9.3, §13.1 | complete |
 | 13 | SMS & email nudge channels | §8.7, §9.8, §13.1 | pending |
 | 14 | Hinglish voice recovery call | §9.7, §11.4, §16.4 | pending |
 | 15 | Demo hardening, replay & documentation | §13.3, §13.4, §15, §16 | pending |
