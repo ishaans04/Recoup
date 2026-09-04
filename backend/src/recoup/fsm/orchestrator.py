@@ -182,6 +182,20 @@ class Orchestrator:
                     rationale=self._escalation_rationale(outcome),
                     outcome=outcome.outcome_detail,
                 )
+            if outcome.escalate_reason is not None and not outcome.executed:
+                # The gate passed, but the policy itself chose not to act: a fraud
+                # block (NO_ACTION) or an unknown-cause escalation (ESCALATE). There
+                # is nothing to execute and nothing to schedule, so this hands the
+                # item straight to a human rather than parking a scheduleless action
+                # in SCHEDULED. A nudge that *did* execute keeps its escalate_reason
+                # too, but is excluded here by ``not outcome.executed`` so its
+                # EXECUTED transition is still recorded before it escalates below.
+                return self._machine.transition(
+                    item,
+                    State.ESCALATED,
+                    rationale=outcome.escalate_reason,
+                    outcome=outcome.outcome_detail,
+                )
             if not outcome.executed:
                 self._pending_outcomes[item.txn_id] = outcome
                 return self._machine.transition(
@@ -246,10 +260,22 @@ class Orchestrator:
                     rationale=outcome.escalate_reason,
                     outcome=outcome.outcome_detail,
                 )
+            # Failed, but the retry budget is not yet spent: loop back for another
+            # attempt. Re-select the action against the *incremented* retry count so
+            # the policy's per-attempt decisions actually take effect on a retry — a
+            # soft decline is retried at most once and then escalates (PRD §10.3),
+            # and a gateway-degradation backoff grows with each attempt (PRD §11.4).
+            # Replaying the first-chosen action unchanged until the retry cap would
+            # silently bypass both rules, which is what an end-to-end run revealed.
+            reselected_action = item.action
+            if item.diagnosis is not None:
+                next_attempt = item.model_copy(update={"retry_count": item.retry_count + 1})
+                reselected_action = self._deps.select_action(next_attempt, item.diagnosis)
             return self._machine.transition(
                 item,
                 State.ACTION_CHOSEN,
                 rationale=outcome.outcome_detail or "attempt failed; retrying",
+                action=reselected_action,
                 outcome=outcome.outcome_detail,
             )
 

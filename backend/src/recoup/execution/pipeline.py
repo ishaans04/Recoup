@@ -86,10 +86,25 @@ class GatePipeline:
 
         assert verdict.gate_pass is not None  # PASS always carries a pass
         result = await self._executor.execute(verdict.gate_pass, item, effective)
+
+        # A customer nudge never collects the money at the moment it is sent — a
+        # delivered SMS or call only *asks* the customer to act. Unlike a retry, a
+        # nudge is not bounded by the retry cap, so returning it to ACTION_CHOSEN
+        # would re-select the same nudge and loop forever. It settles here instead:
+        # the outcome carries an escalate reason, so after this one attempt the item
+        # is handed to a human as an honest, unrecovered exception (PRD §13.4) rather
+        # than being retried into an infinite loop.
+        escalate_reason: str | None = None
+        if effective.type is ActionType.CUSTOMER_NUDGE and not result.recovered:
+            escalate_reason = (
+                f"customer nudge via {result.channel.value} did not collect the "
+                f"payment ({result.detail}); handed to a human to follow up"
+            )
+
         return GateOutcome(
             executed=True,
             recovered=result.recovered,
-            escalate_reason=None,
+            escalate_reason=escalate_reason,
             constraint_result="PASS",
             constraint_reason=verdict.reason,
             outcome_detail=result.detail,
