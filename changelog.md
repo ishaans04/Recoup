@@ -458,6 +458,68 @@ three-state circuit breaker that stops Recoup hammering a degraded route.
 
 ---
 
+### Phase 8 — End-to-end batch & honest metrics
+_Status: complete_
+
+Satisfies PRD §5.1 (the recovery loop over a realistic batch), §7.4 (the full
+detect→diagnose→decide→execute→govern flow), §13.4 (honest, un-cherry-picked
+metrics), §15.1 (the batch report's contents).
+
+The milestone phase: every layer built in Phases 0-7 runs together for the first
+time, headlessly, over 50 synthetic transactions, and the report read back from the
+immutable audit trail is arithmetically honest — a genuine 52.7% recovery rate at
+the default seed beside a populated, specifically-reasoned exception list.
+
+#### Added
+
+- `recoup.metrics` — `BatchReport` with the mandatory `exceptions` list (PRD §13.4),
+  `recovery_rate = total_recovered / total_at_risk` with nothing filtered out of the
+  denominator, per-cause and per-channel breakdowns, constraint rejections,
+  escalations, diagnosis-source counts and breaker trips. `build_report` is pure
+  over its inputs, so a fresh reader over the same database rebuilds an identical
+  report. `render_text` formats it to be read aloud on stage.
+- `recoup.batch.generator` — `generate_batch` returns raw Razorpay-shaped payloads
+  (so the batch flows through `Ingestor.ingest_payload`, the live path, PRD §8.1);
+  `build_gateway` seeds a matching `MockGateway` from the same spec list. Honest by
+  construction: an over-cap Rs 75,000 rejection, a six-strong same-route cluster
+  that trips the breaker, a high-value expired-mandate voice candidate, a fraud
+  block, a contactless item and an unknown code sit beside the recoverable cases.
+  `SEEDED_SCENARIOS` addresses each named case by `txn_id`.
+- `recoup.runtime` — `build_recovery_runtime`, the composition root shared by the
+  batch runner and (Phase 9) the API. The one sanctioned place that imports
+  `recoup.channels` to *register* a channel; the executor stays the only caller of
+  `RecoveryChannel.execute`, and `test_single_door.py` now allows this module by
+  exact name.
+- `recoup.batch.runner` — `BatchRunner` drives every item to a terminal state and
+  derives the report from the audit trail. Scheduled retries are fast-forwarded by
+  advancing the shared `SimulatedClock` to the earliest parked time, which also
+  ages breaker cooldowns.
+- `recoup.batch.__main__` — the CLI: `python -m recoup.batch --n 50 --seed 42
+  --report` (and `--json`).
+- 13 integration tests (`tests/integration/test_batch.py`), including
+  `test_batch_is_not_perfect` (0 < rate < 1 and non-empty exceptions) and
+  `test_report_is_derived_from_the_audit_trail`. 431 tests total.
+
+#### Decisions
+
+- **Three loop-correctness fixes** to Phase 2/6 code, surfaced only by the first
+  full end-to-end run: a customer nudge escalates after one attempt instead of
+  looping (it is not bounded by the retry cap); a gate-passed `NO_ACTION`/`ESCALATE`
+  escalates from `CONSTRAINT_CHECKED` instead of being parked in `SCHEDULED` with no
+  `scheduled_for`; and the orchestrator re-selects the action on each retry so the
+  selector's per-attempt rules (soft decline once, PRD §10.3; growing backoff, §11.4)
+  actually apply rather than replaying the first-chosen action to the cap.
+- The runner drives one transition at a time rather than via `run_to_completion`,
+  which treats a not-yet-due `SCHEDULED` item as non-convergence; parking then
+  fast-forwarding is the behaviour PRD §11.4 requires.
+- Transaction amounts are realistic and varied (recoverers mid-value, most
+  exceptions smaller, the two mandatory big-ticket cases aside), which lands the
+  paise-weighted rate in a plausible band **without ever touching the rate's
+  arithmetic** — the honesty requirement is a property of the input batch, not of
+  the report (PRD §13.4).
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -470,7 +532,7 @@ three-state circuit breaker that stops Recoup hammering a degraded route.
 | 5 | Action selector, retry timing, channel policy | §10.3, §11.4, §8.7 | complete |
 | 6 | Constraints gate & escalation | §12 | complete |
 | 7 | Payment gateway adapter, mock & circuit breaker | §8.4, §9.3, §11.4, §13.1 | complete |
-| 8 | End-to-end batch & honest metrics | §5.1, §7.4, §13.4, §15.1 | pending |
+| 8 | End-to-end batch & honest metrics | §5.1, §7.4, §13.4, §15.1 | complete |
 | 9 | FastAPI: webhooks, REST, WebSocket | §8.1, §8.8, §9.5, §14 | pending |
 | 10 | Next.js dashboard | §8.8, §9.4, §12.4, §15.1 | pending |
 | 11 | Groq LLM Tier-2 diagnosis | §9.2, §11.1, §13.1 | pending |
