@@ -7,7 +7,7 @@ payment link. **Do the number verification the night before, not live** (PRD §1
 
 ## 1. Credentials and a public URL
 
-In `backend/.env`:
+In `.env`:
 
 ```
 RECOUP_MODE=live

@@ -7,7 +7,7 @@ adapter and receive genuine signed webhooks, follow this once. Everything here i
 ## 1. Keys
 
 Razorpay Dashboard → **Settings → API Keys** → *Generate Test Key*. Copy into
-`backend/.env`:
+`.env`:
 
 ```
 RECOUP_MODE=live
@@ -35,7 +35,7 @@ Dashboard → **Settings → Webhooks → Add New Webhook**:
 
 - **URL:** `https://<your-ngrok-id>.ngrok-free.app/webhooks/razorpay`
 - **Secret:** any string you choose — copy the **same** value into
-  `RAZORPAY_WEBHOOK_SECRET` in `backend/.env`. This is the HMAC key the endpoint
+  `RAZORPAY_WEBHOOK_SECRET` in `.env`. This is the HMAC key the endpoint
   verifies every delivery against; an unsigned or wrong-secret delivery is rejected
   with `401` and nothing is written (PRD §14).
 - **Active events:** `payment.failed`, `subscription.halted`, `invoice.expired`.
@@ -50,7 +50,7 @@ fires. Razorpay's documented test instruments include:
   with the failing card above.
 
 Within a second or two Razorpay delivers a signed `payment.failed` to your endpoint.
-Watch the dashboard (`npm --prefix frontend run dev`) — the failed payment appears as
+Watch the dashboard (`npm run dev`) — the failed payment appears as
 a work item, is diagnosed, gated, and its full audit trail is visible.
 
 ## 5. Confirm the path
@@ -66,7 +66,7 @@ a work item, is diagnosed, gated, and its full audit trail is visible.
   `httpx`, so timeouts and error codes are mapped explicitly (5xx → retryable,
   4xx → escalate, unknown id → typed not-found).
 - Recovery is modelled as a re-collection **payment link** carrying the idempotency
-  key — see the module docstring in `backend/src/recoup/gateways/razorpay.py`. A
+  key — see the module docstring in `src/recoup/gateways/razorpay.py`. A
   failed payment cannot be re-charged directly in test mode; the link is how a
   merchant actually recovers the amount.
 - **Tests always use the mock** — the live adapter is exercised by this manual flow
