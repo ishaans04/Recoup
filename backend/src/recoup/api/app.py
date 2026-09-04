@@ -37,7 +37,8 @@ from recoup.config import Settings
 from recoup.diagnosis.factory import build_llm
 from recoup.domain.enums import State
 from recoup.events import EventBus
-from recoup.gateways.mock import MockGateway
+from recoup.gateways.base import PaymentGateway
+from recoup.gateways.factory import build_gateway_for
 from recoup.metrics import BatchReport
 from recoup.runtime import RecoveryRuntime, build_recovery_runtime
 from recoup.storage.audit import AuditLog
@@ -72,7 +73,7 @@ class AppContext:
     engine: Engine
     clock: SystemClock
     bus: EventBus
-    gateway: MockGateway
+    gateway: PaymentGateway
     publisher: BusPublisher
     runtime: RecoveryRuntime
     batch_runs: dict[str, BatchRun] = field(default_factory=dict)
@@ -175,12 +176,7 @@ def _build_context(settings: Settings) -> AppContext:
     clock = SystemClock()
     bus = EventBus(clock)
 
-    if settings.is_live:
-        _LOG.warning(
-            "RECOUP_MODE=live but no real payment gateway is wired yet (Phase 12); "
-            "falling back to the mock gateway."
-        )
-    gateway = MockGateway(clock=clock, seed=42)
+    gateway = build_gateway_for(settings, clock)
 
     publisher = BusPublisher(bus, WorkItemRepo(engine), AuditLog(engine), clock)
     runtime = build_recovery_runtime(
