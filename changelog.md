@@ -744,6 +744,47 @@ channels simply aren't built).
 
 ---
 
+### Phase 14 — Hinglish voice recovery call
+_Status: complete_
+
+Satisfies PRD §9.7 (the cost-disciplined two-TTS design), §11.4/§16.4 (the
+high-value Hinglish hero call) and §14 (signed callbacks). CREDENTIAL GATE: Twilio
+plus a `PUBLIC_BASE_URL`; ElevenLabs optional. Absent any, voice is not built and
+nudges fall through to SMS/email.
+
+#### Added
+
+- `recoup.channels.voice.VoiceChannel` — places an outbound Twilio call whose TwiML
+  and status callback point at this service; `recovered=False` (a call is a nudge);
+  never raises, so a failure falls through to SMS. `can_handle` independently
+  re-checks high-value + phone + credentials.
+- `recoup.channels.voice_script` — the structured Hinglish/English script: merchant
+  and purpose up front, the lakh-grouped amount, press-1-for-link / press-2-to-decline,
+  the PRD §16.4 line used with a title when known and a gender-neutral opening
+  otherwise.
+- `recoup.channels.voice.render_hero_audio` — the ElevenLabs render, cached on disk
+  and off by default, so the free quota is never spent twice (PRD §9.7).
+- `recoup.api.voice` — the TwiML / gather / status routes. Keypress 1 texts the link,
+  2 declines, no input is a no-answer; every branch audits. Excluded from the OpenAPI
+  schema (Twilio-facing, not the dashboard contract) and guarded by Twilio signature
+  verification — an unsigned callback is refused with `403`.
+- `public_base_url` and `use_premium_voice` settings; `docs/voice-setup.md`.
+- 22 respx-mocked tests (channel, script, TTS cache, and the routes). 513 tests total.
+
+#### Decisions
+
+- **`TWILIO_PHONE_NUMBER` is not yet set**, so voice and SMS are not built and the
+  chain currently delivers via email; adding a free Twilio trial number lights up
+  both with no code change (`docs/voice-setup.md`).
+- The test suite is made hermetic: the API and voice fixtures ignore the real `.env`,
+  so with live keys present the suite still never touches the network — "tests always
+  use mock" holds. Added `python-multipart` for Twilio's form-encoded callbacks.
+- `recoup.api.voice` is allowed by the single-door test: a keypress re-sends a link
+  the nudge was already gated for — a human-initiated action, not a new autonomous
+  money move.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -762,5 +803,5 @@ channels simply aren't built).
 | 11 | Groq LLM Tier-2 diagnosis | §9.2, §11.1, §13.1 | complete |
 | 12 | Razorpay live adapter | §9.3, §13.1 | complete |
 | 13 | SMS & email nudge channels | §8.7, §9.8, §13.1 | complete |
-| 14 | Hinglish voice recovery call | §9.7, §11.4, §16.4 | pending |
+| 14 | Hinglish voice recovery call | §9.7, §11.4, §16.4 | complete |
 | 15 | Demo hardening, replay & documentation | §13.3, §13.4, §15, §16 | pending |
