@@ -22,8 +22,12 @@ from pathlib import Path
 _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "recoup"
 
 # The executor is the sanctioned importer of the channels package; modules inside
-# the channels package obviously import their own siblings.
-_CHANNELS_IMPORT_ALLOWED = {"recoup.execution.executor"}
+# the channels package obviously import their own siblings. The composition root
+# (recoup.runtime) is allowed too: it imports a channel only to *register* it into
+# the registry, never to execute one — registration makes a channel resolvable, and
+# the executor remains the sole caller of RecoveryChannel.execute. A reviewer can
+# confirm that by reading runtime.py, which is why the allowance is by exact name.
+_CHANNELS_IMPORT_ALLOWED = {"recoup.execution.executor", "recoup.runtime"}
 _CHANNELS_PACKAGE_PREFIX = "recoup.channels"
 
 # GatePass is constructed only where it is defined (the gate) and reconstructed in
