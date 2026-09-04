@@ -17,11 +17,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import httpx
 import pytest
 
 from recoup.clock import SimulatedClock
 from recoup.gateways.base import GatewayTxn, PaymentGateway
 from recoup.gateways.mock import MockGateway, UnknownTransaction
+from recoup.gateways.razorpay import RazorpayGateway
 from tests.conftest import CREATED_AT
 
 _KNOWN_TXN = "pay_ContractAB01"
@@ -45,9 +47,55 @@ def _mock_gateway() -> PaymentGateway:
     return gateway
 
 
+def _razorpay_transport() -> httpx.MockTransport:
+    """Razorpay-shaped responses for the contract's fixed transaction ids.
+
+    The real ``RazorpayGateway`` runs the identical contract assertions here, over an
+    injected transport, because the suite's fixed ids do not exist in any live
+    account — this proves the adapter maps Razorpay's shapes correctly without a
+    seeded live PSP. ``test_razorpay_gateway.py`` covers the error mapping.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "GET" and path.endswith(f"/payments/{_KNOWN_TXN}"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": _KNOWN_TXN,
+                    "amount": 249900,
+                    "currency": "INR",
+                    "status": "failed",
+                    "method": "card",
+                    "card": {"issuer": "HDFC", "network": "Visa"},
+                    "error_code": "BAD_REQUEST_ERROR",
+                    "error_description": "insufficient balance",
+                },
+            )
+        if request.method == "GET" and path.endswith(f"/payments/{_UNKNOWN_TXN}"):
+            return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
+        if request.method == "POST" and path.endswith("/payment_links"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "plink_ContractAB01",
+                    "short_url": "https://rzp.io/i/contractAB01",
+                    "status": "paid",  # a settled recovery link -> retry reports recovered
+                },
+            )
+        return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
+
+    return httpx.MockTransport(handler)
+
+
+def _razorpay_gateway() -> PaymentGateway:
+    return RazorpayGateway("rzp_test_contract", "secret_contract", transport=_razorpay_transport())
+
+
 # name -> factory producing a gateway seeded with the _KNOWN_TXN above.
 _GATEWAY_FACTORIES: dict[str, Callable[[], PaymentGateway]] = {
     "mock": _mock_gateway,
+    "razorpay": _razorpay_gateway,
 }
 
 
