@@ -520,6 +520,62 @@ the default seed beside a populated, specifically-reasoned exception list.
 
 ---
 
+### Phase 9 — FastAPI service: webhooks, REST & WebSocket
+_Status: complete_
+
+Satisfies PRD §8.1 (webhook ingestion), §8.8 (the live dashboard's data source),
+§9.5 (the service surface), §13.1/§13.3 (degrade, and survive a dropped connection),
+and §14 (signature verification before parsing). Implements
+[`docs/interface-contract.md`](interface-contract.md), frozen in Phase 0, exactly.
+
+The surface the dashboard and Razorpay both talk to. Two properties carry the
+weight: the webhook is a security boundary — the signature is verified against the
+raw bytes before anything is parsed, unsigned traffic is refused, a duplicate never
+recovers twice — and the WebSocket survives a mid-demo disconnect via a monotonic
+sequence and backfill-on-reconnect.
+
+#### Added
+
+- `recoup.events` — a sequenced, replayable in-process event bus with per-subscriber
+  bounded queues that overflow (dropping the one stalled client) rather than blocking
+  the publisher. The domain layer publishes through the `EventSink` interface, so the
+  batch CLI still runs with no bus; the state machine emits after commit, the gate
+  pipeline emits the demo-critical refusal.
+- `recoup.runtime.build_recovery_runtime` — the composition root, now shared by the
+  batch runner and the API and threaded with the optional event sink.
+- `recoup.api.app` — the FastAPI factory and `AppContext`; a live runtime on wall
+  time plus per-run simulated-clock batch runtimes over one database, all mutations
+  serialised behind a lock. `uvicorn recoup.api.app:app` serves it.
+- `recoup.api.schemas` — Pydantic models mirroring the contract, with IST datetime
+  serialisation, so the OpenAPI schema is exact and drives the frontend's types.
+- `recoup.api.webhooks` — `POST /webhooks/razorpay`: raw-byte signature check, 401 on
+  failure with nothing written, 200 idempotent on a duplicate, 202 for a new event.
+- `recoup.api.routes` — every REST path in the contract (§3), including background
+  `POST /api/batch/run` and the real-gate `POST /api/demo/inject`.
+- `recoup.api.ws` — `GET /ws`: handshake, gap-free backfill (subscribe-before-snapshot),
+  overflow-drop, and a heartbeat.
+- `recoup.api.metrics_view`, `recoup.api.publisher`, `recoup.api.processing`,
+  `recoup.api.errors` — the metrics/escalation derivation, the frame builder, the
+  live drive-to-settle, and the error envelope.
+- `frontend` `gen:types` script — generates `src/lib/api-types.d.ts` from the running
+  server's OpenAPI, so a contract drift breaks the frontend build.
+- 24 new tests (`test_events.py` ×9, `test_api.py` ×14, +1). 454 tests total.
+
+#### Decisions
+
+- **Two contract deviations, both toward the contract's own authority.** An unsigned
+  webhook returns `401` (the frozen contract's mapping), not the brief's suggested
+  `400`. And additive notes were appended to the contract for the `heartbeat` message
+  type, the real `gate.rejected.constraint` value set, and a nullable
+  `batch.progress.current_txn_id` — additive changes the freeze permits.
+- The WebSocket tests use a minimal in-loop ASGI harness rather than Starlette's
+  `TestClient`, whose background portal raises `CancelledError` under pytest-asyncio's
+  auto mode; the endpoint itself is verified against a real uvicorn server.
+- `SQLite busy_timeout=5000` was added so a live read never fails against a
+  background batch's write on the single demo database.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -533,7 +589,7 @@ the default seed beside a populated, specifically-reasoned exception list.
 | 6 | Constraints gate & escalation | §12 | complete |
 | 7 | Payment gateway adapter, mock & circuit breaker | §8.4, §9.3, §11.4, §13.1 | complete |
 | 8 | End-to-end batch & honest metrics | §5.1, §7.4, §13.4, §15.1 | complete |
-| 9 | FastAPI: webhooks, REST, WebSocket | §8.1, §8.8, §9.5, §14 | pending |
+| 9 | FastAPI: webhooks, REST, WebSocket | §8.1, §8.8, §9.5, §14 | complete |
 | 10 | Next.js dashboard | §8.8, §9.4, §12.4, §15.1 | pending |
 | 11 | Groq LLM Tier-2 diagnosis | §9.2, §11.1, §13.1 | pending |
 | 12 | Razorpay live adapter | §9.3, §13.1 | pending |
