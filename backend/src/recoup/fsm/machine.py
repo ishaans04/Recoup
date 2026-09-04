@@ -29,6 +29,7 @@ from sqlalchemy import Engine
 from recoup.clock import Clock
 from recoup.domain.enums import State
 from recoup.domain.models import Action, AuditEvent, Diagnosis, WorkItem
+from recoup.events import EventSink
 from recoup.fsm.states import LEGAL_TRANSITIONS, is_terminal
 from recoup.storage.audit import AuditLog
 from recoup.storage.db import unit_of_work
@@ -61,11 +62,19 @@ class TerminalStateError(Exception):
 class StateMachine:
     """Validates, checkpoints and audits every transition a work item makes."""
 
-    def __init__(self, engine: Engine, audit: AuditLog, repo: WorkItemRepo, clock: Clock) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        audit: AuditLog,
+        repo: WorkItemRepo,
+        clock: Clock,
+        sink: EventSink | None = None,
+    ) -> None:
         self._engine = engine
         self._audit = audit
         self._repo = repo
         self._clock = clock
+        self._sink = sink
 
     def transition(
         self,
@@ -148,6 +157,13 @@ class StateMachine:
 
         with unit_of_work(self._engine) as session:
             saved = self._repo.save(updated, session=session)
-            self._audit.append(event, session=session)
+            audit_id = self._audit.append(event, session=session)
+
+        # Publish only after the transaction has committed, so a subscriber never
+        # sees a frame for a change that was rolled back. The recorded event carries
+        # the id the store assigned, which the dashboard uses as its WebSocket cursor.
+        if self._sink is not None:
+            recorded = event.model_copy(update={"id": audit_id})
+            self._sink.record_transition(from_state, saved, recorded)
 
         return saved

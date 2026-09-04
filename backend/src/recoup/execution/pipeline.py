@@ -25,6 +25,7 @@ from recoup.clock import Clock
 from recoup.constraints.gate import ConstraintGate
 from recoup.domain.enums import ActionType
 from recoup.domain.models import Action, WorkItem
+from recoup.events import EventSink
 from recoup.execution.executor import ActionExecutor
 from recoup.fsm.orchestrator import GateOutcome
 
@@ -36,10 +37,22 @@ _ESCALATE_BY_POLICY = frozenset({ActionType.NO_ACTION, ActionType.ESCALATE})
 class GatePipeline:
     """Composes the gate and executor into one ``check_and_execute`` callable."""
 
-    def __init__(self, gate: ConstraintGate, executor: ActionExecutor, clock: Clock) -> None:
+    def __init__(
+        self,
+        gate: ConstraintGate,
+        executor: ActionExecutor,
+        clock: Clock,
+        sink: EventSink | None = None,
+        *,
+        max_amount_paise: int = 5_000_000,
+        max_retries: int = 3,
+    ) -> None:
         self._gate = gate
         self._executor = executor
         self._clock = clock
+        self._sink = sink
+        self._max_amount_paise = max_amount_paise
+        self._max_retries = max_retries
 
     async def check_and_execute(self, item: WorkItem, action: Action) -> GateOutcome:
         """Gate ``action`` for ``item`` and, if allowed and due, execute it."""
@@ -55,6 +68,20 @@ class GatePipeline:
         verdict = self._gate.check(effective, item)
 
         if verdict.result == "FAIL":
+            # Announce the refusal as its own demo-critical frame (PRD §12.4), in
+            # addition to the audit row the escalation will write. The constraint is
+            # the first rule that failed; the caps travel with it so the dashboard
+            # can render "Rs 75,000 > Rs 50,000" without a second request.
+            if self._sink is not None:
+                constraint = verdict.failed_rule_ids[0] if verdict.failed_rule_ids else "unknown"
+                self._sink.record_gate_rejection(
+                    item,
+                    effective,
+                    constraint=constraint,
+                    reason=verdict.reason,
+                    limit_paise=self._max_amount_paise,
+                    max_retries=self._max_retries,
+                )
             return GateOutcome(
                 executed=False,
                 recovered=False,

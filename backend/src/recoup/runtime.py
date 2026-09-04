@@ -30,6 +30,7 @@ from recoup.diagnosis.base import LLMClient
 from recoup.diagnosis.engine import DiagnosisEngine
 from recoup.diagnosis.rules import RulesTable
 from recoup.domain.models import Action, Diagnosis, WorkItem
+from recoup.events import EventSink
 from recoup.execution.executor import ActionExecutor
 from recoup.execution.pipeline import GatePipeline
 from recoup.fsm.machine import StateMachine
@@ -77,6 +78,7 @@ def build_recovery_runtime(
     min_llm_confidence: float = 0.7,
     llm: LLMClient | None = None,
     webhook_secret: str | None = None,
+    sink: EventSink | None = None,
 ) -> RecoveryRuntime:
     """Assemble the full recovery stack around one engine, clock and gateway.
 
@@ -89,7 +91,7 @@ def build_recovery_runtime(
     """
     repo = WorkItemRepo(engine)
     audit = AuditLog(engine)
-    machine = StateMachine(engine, audit, repo, clock)
+    machine = StateMachine(engine, audit, repo, clock, sink=sink)
 
     breaker = CircuitBreaker(clock=clock)
     diagnosis_engine = DiagnosisEngine(RulesTable(), llm=llm, min_confidence=min_llm_confidence)
@@ -100,7 +102,14 @@ def build_recovery_runtime(
     registry = ChannelRegistry()
     registry.register(PaymentRetryChannel(gateway, breaker))
     executor = ActionExecutor(gate, registry)
-    pipeline = GatePipeline(gate, executor, clock)
+    pipeline = GatePipeline(
+        gate,
+        executor,
+        clock,
+        sink,
+        max_amount_paise=max_amount_paise,
+        max_retries=max_retries,
+    )
 
     async def diagnose(item: WorkItem) -> Diagnosis:
         return await diagnosis_engine.diagnose(item)
