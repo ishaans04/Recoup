@@ -700,6 +700,50 @@ passes the identical contract suite `MockGateway` does, unmodified.
 
 ---
 
+### Phase 13 — SMS & email nudge channels
+_Status: complete_
+
+Satisfies PRD §8.7 (channel selection as intelligence), §9.8 (the nudge channels)
+and §13.1 (an audited fallback chain — a failed nudge is a recorded, bounded
+outcome). CREDENTIAL GATE: Twilio (`TWILIO_*`) and `RESEND_API_KEY` (absent → those
+channels simply aren't built).
+
+#### Added
+
+- `recoup.channels.sms.SmsChannel` (Twilio) and `recoup.channels.email.EmailChannel`
+  (Resend) — implement `RecoveryChannel` over `httpx`. Each fetches a real payment
+  link from the gateway and sends the nudge; `delivered` reflects the API result and
+  `recovered` is always `False`. Neither raises — a transport failure or 4xx is a
+  recorded `delivered=False`.
+- `recoup.channels.templates` — English and Hinglish nudge copy chosen by an explicit
+  rule (+91 → Hinglish), stating plainly what failed, what it costs and the one link
+  that fixes it, with the merchant identity, no manufactured urgency, one GSM-7 SMS
+  segment.
+- `recoup.channels.router.ChannelRouter` — walks the voice→SMS→email chain and
+  records every attempt as its own audit row before falling through; the first
+  delivery wins, and a total failure names the full chain of reasons.
+- `recoup.channels.factory.build_nudge_channels` — builds only the channels whose
+  credentials are present; wired into the executor via the composition root, for the
+  live runtime only.
+- `ChannelResult.channel` — the channel that actually delivered, so the router can
+  report which leg of the chain succeeded.
+- 17 respx-mocked unit tests across four files. 498 tests total.
+
+#### Decisions
+
+- **Live-verified auth** (read-only): both the Resend key and the Twilio SID/token
+  authenticate against their real APIs. `TWILIO_PHONE_NUMBER` is not yet set, so SMS
+  and voice have no from-number and the chain falls through to email (Resend) — the
+  graceful degradation the router is built for. Adding a free Twilio trial number
+  lights up SMS with no code change.
+- The nudge router is wired into the **live** runtime only, never the synthetic
+  batch, so a demo batch of fabricated customers never sends a real SMS or email.
+- A router attempt is audited as a same-state annotation row (`from_state ==
+  to_state`), so the per-attempt trail never disturbs the state chain the audit
+  completeness check rests on.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -717,6 +761,6 @@ passes the identical contract suite `MockGateway` does, unmodified.
 | 10 | Next.js dashboard | §8.8, §9.4, §12.4, §15.1 | complete |
 | 11 | Groq LLM Tier-2 diagnosis | §9.2, §11.1, §13.1 | complete |
 | 12 | Razorpay live adapter | §9.3, §13.1 | complete |
-| 13 | SMS & email nudge channels | §8.7, §9.8, §13.1 | pending |
+| 13 | SMS & email nudge channels | §8.7, §9.8, §13.1 | complete |
 | 14 | Hinglish voice recovery call | §9.7, §11.4, §16.4 | pending |
 | 15 | Demo hardening, replay & documentation | §13.3, §13.4, §15, §16 | pending |
