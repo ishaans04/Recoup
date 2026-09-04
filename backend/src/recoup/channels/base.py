@@ -100,6 +100,15 @@ class ChannelRegistry:
             return None
         return channel
 
+    def get(self, name: Channel) -> RecoveryChannel | None:
+        """The channel registered under ``name`` regardless of any item, or ``None``.
+
+        Unlike :meth:`resolve`, this does not consult ``can_handle`` — it answers
+        "is this channel wired in at all?", which the voice keypress route needs to
+        find the SMS sender to hand a payment link to.
+        """
+        return self._channels.get(name)
+
     def resolve_chain(self, names: Iterable[Channel], item: WorkItem) -> list[RecoveryChannel]:
         """Every channel in ``names`` that can handle ``item``, in the given order.
 

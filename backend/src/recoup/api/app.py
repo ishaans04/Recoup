@@ -230,10 +230,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Imported here rather than at module top to avoid a circular import: the routers
     # depend on this module's AppContext type.
-    from recoup.api import routes, webhooks, ws
+    from recoup.api import routes, voice, webhooks, ws
 
     app.include_router(webhooks.router)
     app.include_router(routes.router)
+    app.include_router(voice.router)
     app.include_router(ws.router)
     return app
 

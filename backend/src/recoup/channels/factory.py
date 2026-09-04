@@ -11,6 +11,7 @@ from __future__ import annotations
 from recoup.channels.base import RecoveryChannel
 from recoup.channels.email import EmailChannel
 from recoup.channels.sms import SmsChannel
+from recoup.channels.voice import VoiceChannel
 from recoup.config import Settings
 from recoup.gateways.base import PaymentGateway
 
@@ -24,12 +25,27 @@ _DEFAULT_EMAIL_FROM = "Recoup <onboarding@resend.dev>"
 def build_nudge_channels(settings: Settings, gateway: PaymentGateway) -> list[RecoveryChannel]:
     """The nudge channels whose credentials are configured, in preference order."""
     channels: list[RecoveryChannel] = []
-    if settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_phone_number:
+    twilio_ready = bool(
+        settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_phone_number
+    )
+    if twilio_ready and settings.public_base_url:
+        # Voice needs a public URL for Twilio to fetch its TwiML; without one it is
+        # simply not built and the chain falls through to SMS/email.
+        channels.append(
+            VoiceChannel(
+                settings.twilio_account_sid,  # type: ignore[arg-type]  # twilio_ready guards None
+                settings.twilio_auth_token,  # type: ignore[arg-type]
+                settings.twilio_phone_number,  # type: ignore[arg-type]
+                gateway,
+                public_base_url=settings.public_base_url,
+            )
+        )
+    if twilio_ready:
         channels.append(
             SmsChannel(
-                settings.twilio_account_sid,
-                settings.twilio_auth_token,
-                settings.twilio_phone_number,
+                settings.twilio_account_sid,  # type: ignore[arg-type]
+                settings.twilio_auth_token,  # type: ignore[arg-type]
+                settings.twilio_phone_number,  # type: ignore[arg-type]
                 gateway,
             )
         )

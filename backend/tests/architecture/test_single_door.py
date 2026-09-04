@@ -27,7 +27,13 @@ _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "recoup"
 # the registry, never to execute one — registration makes a channel resolvable, and
 # the executor remains the sole caller of RecoveryChannel.execute. A reviewer can
 # confirm that by reading runtime.py, which is why the allowance is by exact name.
-_CHANNELS_IMPORT_ALLOWED = {"recoup.execution.executor", "recoup.runtime"}
+#
+# recoup.api.voice is allowed because a customer pressing 1 on the recovery call is a
+# human-initiated, non-autonomous action: it re-sends, by SMS, a payment link the
+# system already gated the nudge for. That is not a fresh autonomous money action —
+# the invariant the gate protects — so the voice callback route may run the SMS
+# channel and use the TwiML/script helpers directly.
+_CHANNELS_IMPORT_ALLOWED = {"recoup.execution.executor", "recoup.runtime", "recoup.api.voice"}
 _CHANNELS_PACKAGE_PREFIX = "recoup.channels"
 
 # GatePass is constructed only where it is defined (the gate) and reconstructed in
