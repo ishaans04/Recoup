@@ -31,7 +31,11 @@ def api_app() -> Iterator[FastAPI]:
     """A fresh app backed by a private temp SQLite database, with a webhook secret set."""
     with tempfile.TemporaryDirectory(prefix="recoup-api-") as tmp_dir:
         db_path = f"{tmp_dir}/api.db".replace("\\", "/")
-        settings = Settings(database_url=f"sqlite:///{db_path}", razorpay_webhook_secret=_SECRET)
+        settings = Settings(
+            _env_file=None,  # hermetic: never read the real .env
+            database_url=f"sqlite:///{db_path}",
+            razorpay_webhook_secret=_SECRET,
+        )
         app = create_app(settings)
         try:
             yield app
