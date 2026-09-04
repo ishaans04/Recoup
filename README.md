@@ -29,12 +29,14 @@ Detect a failed payment → diagnose *why* it failed → run a **bounded** recov
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-06B6D4?style=flat&logo=tailwindcss&logoColor=white)
 
 <!-- Quality -->
+[![CI](https://github.com/ishaans04/Recoup/actions/workflows/ci.yml/badge.svg)](https://github.com/ishaans04/Recoup/actions/workflows/ci.yml)
 ![Tests](https://img.shields.io/badge/tests-527%20passing-2EA44F?style=flat)
 ![pytest](https://img.shields.io/badge/pytest-513-0A9EDC?style=flat&logo=pytest&logoColor=white)
 ![Vitest](https://img.shields.io/badge/Vitest-14-6E9F18?style=flat&logo=vitest&logoColor=white)
 ![Ruff](https://img.shields.io/badge/ruff-clean-261230?style=flat&logo=ruff&logoColor=white)
 ![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2?style=flat)
 ![uv](https://img.shields.io/badge/uv-managed-DE5FE9?style=flat&logo=uv&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 </div>
 
@@ -421,7 +423,14 @@ and [`docs/voice-setup.md`](docs/voice-setup.md) for the end-to-end runbooks.
 
 Phases 0–14 complete: the money-safe core, the diagnosis engine, the constraint gate, the batch
 loop, the FastAPI service, the Next.js dashboard, and the Groq / Razorpay / Twilio / Resend /
-ElevenLabs integrations — all built behind interfaces, tested, and green. The remaining Phase 15
-covers demo hardening (record/replay), an exception-report generator, and a CI workflow.
+ElevenLabs integrations — all built behind interfaces, tested, and green, with CI running the full
+backend and dashboard suites on every push. The remaining Phase 15 covers demo hardening
+(record/replay) and an exception-report generator.
 
 > All amounts are integer paise. Every money action passes the gate. Every transition is logged.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
