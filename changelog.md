@@ -576,6 +576,51 @@ sequence and backfill-on-reconnect.
 
 ---
 
+### Phase 10 — Next.js dashboard
+_Status: complete_
+
+Satisfies PRD §8.8 (the operations console), §9.4 (built against the frozen
+contract), §12.4 (the gate seen to say no), §15.1 (honest metrics on screen) and §16
+(the demo surface). Consumes [`docs/interface-contract.md`](interface-contract.md)
+and the Phase 9 service.
+
+The live console a judge watches: a recovery counter that climbs as money is
+recovered, an audit table that appends in real time, and — visually loud — the
+constraint gate refusing the Rs 75,000 case.
+
+#### Added
+
+- `frontend/src/app/page.tsx` — the console: composes every panel, runs on the live
+  stream once connected and on a preview dataset until then, and wires Run Batch /
+  Inject / Reset to the REST surface.
+- `frontend/src/lib/ws.ts` — the WebSocket client in three testable layers: a pure
+  `reduceStreamState`, a `RecoupStreamClient` that reconnects with backoff carrying
+  the last applied `seq`, and the `useRecoupStream` hook that hydrates a REST snapshot
+  then streams live. `lib/api.ts` is the typed REST client; `lib/format.ts` renders
+  lakh-grouped rupees.
+- Components: `RecoveryCounter`, `AuditTable` (with the two-tier rules/LLM source
+  badge), `ConstraintRejections`, `EscalationQueue`, `ExceptionList`, `CauseBreakdown`,
+  `BatchControls`, `ConnectionStatus`.
+- Vitest + Testing Library suite: the stream reducer's ordering and dedup, the
+  reconnect cursor, the rupee formatter, and the counter and audit-table components —
+  14 tests. `npm test`, `npm run lint` and `npm run build` all pass.
+
+#### Decisions
+
+- The dashboard components landed earlier (commits `b230705`..`9b1fcd7`) built against
+  the frozen contract; Phase 10 completes the phase by adding the test suite and
+  verifying the components against the real Phase 9 service — the four snapshot
+  endpoints the stream hook hydrates from were confirmed to return the exact shapes
+  the client expects.
+- There is no server-side reset endpoint in the contract, so the dashboard's Reset
+  reloads the page (re-running the REST snapshot + WS handshake) — the closest honest
+  equivalent the client can offer alone.
+- The WebSocket types use the hand-written `lib/types.ts` mirror of the contract; the
+  Phase 9 `gen:types` script regenerates `lib/api-types.d.ts` from the running server's
+  OpenAPI when network is available, so a drift would break the build.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -590,7 +635,7 @@ sequence and backfill-on-reconnect.
 | 7 | Payment gateway adapter, mock & circuit breaker | §8.4, §9.3, §11.4, §13.1 | complete |
 | 8 | End-to-end batch & honest metrics | §5.1, §7.4, §13.4, §15.1 | complete |
 | 9 | FastAPI: webhooks, REST, WebSocket | §8.1, §8.8, §9.5, §14 | complete |
-| 10 | Next.js dashboard | §8.8, §9.4, §12.4, §15.1 | pending |
+| 10 | Next.js dashboard | §8.8, §9.4, §12.4, §15.1 | complete |
 | 11 | Groq LLM Tier-2 diagnosis | §9.2, §11.1, §13.1 | pending |
 | 12 | Razorpay live adapter | §9.3, §13.1 | pending |
 | 13 | SMS & email nudge channels | §8.7, §9.8, §13.1 | pending |
