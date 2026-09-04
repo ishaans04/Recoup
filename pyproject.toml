@@ -3,6 +3,8 @@ name = "recoup"
 version = "0.1.0"
 description = "Autonomous, money-safe revenue recovery agent for failed payments."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "ishaans04", email = "sharmaishaaan04@gmail.com" }
 ]
