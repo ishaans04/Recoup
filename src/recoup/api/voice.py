@@ -17,14 +17,23 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+from pathlib import Path
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import PlainTextResponse
 
-from recoup.channels.voice import twiml_gather, twiml_say
+from recoup.channels.voice import render_hero_audio, twiml_gather, twiml_say
 from recoup.channels.voice_script import build_script
 from recoup.domain.enums import ActionType, Channel
 from recoup.domain.models import Action, AuditEvent, WorkItem
+
+_VOICE_AUDIO_CACHE = Path(".recoup_cache") / "voice"
+
+
+def _audio_path(txn_id: str) -> Path:
+    """The on-disk MP3 cache path for a transaction's premium (ElevenLabs) audio."""
+    return _VOICE_AUDIO_CACHE / f"{txn_id}.mp3"
+
 
 # Excluded from the OpenAPI schema: these are Twilio-facing callbacks, not part of
 # the dashboard interface contract, so they never appear in the generated frontend
@@ -97,8 +106,31 @@ async def voice_twiml(request: Request, txn_id: str) -> Response:
         phone=item.customer.phone,
     )
     base = (ctx.settings.public_base_url or "").rstrip("/")
-    xml = twiml_gather(script, gather_action=f"{base}/voice/gather/{txn_id}")
+
+    # Premium (ElevenLabs) voice, opt-in and cost-disciplined (PRD §9.7): render the
+    # line to an MP3 once, cache it, and point Twilio's <Play> at /voice/audio. Any
+    # failure falls back to Twilio's free native <Say> — the call still happens.
+    play_url: str | None = None
+    if ctx.settings.use_premium_voice and ctx.settings.elevenlabs_api_key:
+        audio = await render_hero_audio(
+            script.intro,
+            api_key=ctx.settings.elevenlabs_api_key,
+            cache_path=_audio_path(txn_id),
+        )
+        if audio is not None and base:
+            play_url = f"{base}/voice/audio/{txn_id}"
+
+    xml = twiml_gather(script, gather_action=f"{base}/voice/gather/{txn_id}", play_url=play_url)
     return Response(content=xml, media_type=_XML)
+
+
+@router.get("/voice/audio/{txn_id}")
+async def voice_audio(request: Request, txn_id: str) -> Response:
+    """Serve the cached ElevenLabs MP3 for a call (fetched by Twilio's ``<Play>``)."""
+    path = _audio_path(txn_id)
+    if not path.exists():
+        return Response(status_code=404)
+    return Response(content=path.read_bytes(), media_type="audio/mpeg")
 
 
 @router.post("/voice/gather/{txn_id}")
