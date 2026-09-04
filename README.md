@@ -287,7 +287,7 @@ adapters for every external service.
 
 ### Dashboard
 
-Requires **Node 20+**.
+Requires **Node 22+**.
 
 ```bash
 npm install
