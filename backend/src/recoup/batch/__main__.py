@@ -28,6 +28,7 @@ from recoup.batch.generator import build_gateway, generate_batch
 from recoup.batch.runner import build_batch_runner
 from recoup.clock import IST, SimulatedClock
 from recoup.config import Settings
+from recoup.diagnosis.factory import build_llm
 from recoup.metrics import BatchReport
 from recoup.money import format_inr_paise
 from recoup.storage.db import create_engine_for, init_schema
@@ -97,13 +98,20 @@ async def _run(n: int, seed: int) -> BatchReport:
     """Build a private database, a seeded gateway and the runner, then run the batch."""
     with tempfile.TemporaryDirectory(prefix="recoup-batch-") as tmp_dir:
         db_path = f"{tmp_dir}/batch.db".replace("\\", "/")
-        engine = create_engine_for(Settings(database_url=f"sqlite:///{db_path}"))
+        settings = Settings(database_url=f"sqlite:///{db_path}")
+        engine = create_engine_for(settings)
         init_schema(engine)
         try:
             clock = SimulatedClock(start=_DEFAULT_START)
             payloads = generate_batch(n, seed=seed, clock=clock)
             gateway = build_gateway(clock, n=n, seed=seed)
-            runner = build_batch_runner(engine, clock, gateway)
+            runner = build_batch_runner(
+                engine,
+                clock,
+                gateway,
+                min_llm_confidence=settings.min_llm_confidence,
+                llm=build_llm(settings, clock),
+            )
             return await runner.run(payloads, run_id=f"cli-n{n}-seed{seed}")
         finally:
             engine.dispose()

@@ -30,6 +30,7 @@ from datetime import datetime
 from sqlalchemy import Engine
 
 from recoup.clock import SimulatedClock
+from recoup.diagnosis.base import LLMClient
 from recoup.domain.enums import State
 from recoup.domain.models import AuditEvent, WorkItem
 from recoup.events import EventSink
@@ -220,6 +221,7 @@ def build_batch_runner(
     min_llm_confidence: float = 0.7,
     progress: ProgressCallback | None = None,
     sink: EventSink | None = None,
+    llm: LLMClient | None = None,
 ) -> BatchRunner:
     """Compose the whole recovery stack around one engine, clock and gateway.
 
@@ -240,6 +242,7 @@ def build_batch_runner(
         max_amount_paise=max_amount_paise,
         min_llm_confidence=min_llm_confidence,
         sink=sink,
+        llm=llm,
     )
     return BatchRunner(
         runtime.ingestor,

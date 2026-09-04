@@ -34,6 +34,7 @@ from recoup.batch.generator import build_gateway, generate_batch
 from recoup.batch.runner import build_batch_runner
 from recoup.clock import IST, SimulatedClock, SystemClock
 from recoup.config import Settings
+from recoup.diagnosis.factory import build_llm
 from recoup.domain.enums import State
 from recoup.events import EventBus
 from recoup.gateways.mock import MockGateway
@@ -116,6 +117,7 @@ class AppContext:
                     min_llm_confidence=self.settings.min_llm_confidence,
                     progress=on_progress,
                     sink=self.publisher,
+                    llm=build_llm(self.settings, sim_clock),
                 )
                 report = await runner.run(payloads, run_id=run_id)
             run.status = "completed"
@@ -190,6 +192,7 @@ def _build_context(settings: Settings) -> AppContext:
         min_llm_confidence=settings.min_llm_confidence,
         webhook_secret=settings.razorpay_webhook_secret,
         sink=publisher,
+        llm=build_llm(settings, clock),
     )
     return AppContext(
         settings=settings,
