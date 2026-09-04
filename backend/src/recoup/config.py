@@ -88,6 +88,16 @@ class Settings(BaseSettings):
     """Voice synthesis for the high-value call. Absent, Twilio's native
     text-to-speech is used, which is adequate and free."""
 
+    public_base_url: str | None = None
+    """The publicly reachable base URL (e.g. an ngrok URL) Twilio uses to fetch the
+    voice-call TwiML and post status callbacks. Absent, the voice channel is not
+    built and nudges fall through to SMS/email."""
+
+    use_premium_voice: bool = False
+    """Whether the high-value hero call uses ElevenLabs audio. Off by default (PRD
+    §9.7): the free character quota must not be burned on test calls, so premium is
+    a deliberate opt-in for the single staged call."""
+
     resend_api_key: str | None = None
     """Transactional email. Absent, the email channel is mocked."""
 
