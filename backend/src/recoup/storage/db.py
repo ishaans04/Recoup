@@ -54,9 +54,14 @@ def create_engine_for(settings: Settings) -> Engine:
     if is_sqlite:
 
         @event.listens_for(engine, "connect")
-        def _enable_foreign_keys(dbapi_connection: object, _connection_record: object) -> None:
+        def _configure_connection(dbapi_connection: object, _connection_record: object) -> None:
             cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
             cursor.execute("PRAGMA foreign_keys=ON")
+            # Wait up to five seconds for a competing writer rather than failing
+            # immediately with "database is locked": the API serves reads while a
+            # background batch writes, and a demo laptop's single SQLite file must
+            # tolerate that overlap. Postgres has no equivalent need.
+            cursor.execute("PRAGMA busy_timeout=5000")
             cursor.close()
 
     return engine

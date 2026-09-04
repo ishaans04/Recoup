@@ -32,6 +32,7 @@ from sqlalchemy import Engine
 from recoup.clock import SimulatedClock
 from recoup.domain.enums import State
 from recoup.domain.models import AuditEvent, WorkItem
+from recoup.events import EventSink
 from recoup.fsm.orchestrator import Orchestrator
 from recoup.gateways.base import PaymentGateway
 from recoup.gateways.circuit_breaker import CircuitBreaker
@@ -218,6 +219,7 @@ def build_batch_runner(
     max_amount_paise: int = 5_000_000,
     min_llm_confidence: float = 0.7,
     progress: ProgressCallback | None = None,
+    sink: EventSink | None = None,
 ) -> BatchRunner:
     """Compose the whole recovery stack around one engine, clock and gateway.
 
@@ -237,6 +239,7 @@ def build_batch_runner(
         max_retries=max_retries,
         max_amount_paise=max_amount_paise,
         min_llm_confidence=min_llm_confidence,
+        sink=sink,
     )
     return BatchRunner(
         runtime.ingestor,
