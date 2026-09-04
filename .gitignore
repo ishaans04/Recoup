@@ -43,6 +43,9 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 /coverage/
+# Generated from the backend's OpenAPI by `npm run gen:types`; the committed source
+# is the hand-written src/lib/types.ts, so this artifact is regenerated, not tracked.
+src/lib/api-types.d.ts
 npm-debug.log*
 yarn-error.log*
 
