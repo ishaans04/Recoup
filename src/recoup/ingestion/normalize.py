@@ -104,12 +104,8 @@ def _optional_str(container: dict[str, Any], key: str) -> str | None:
 
 def _extract_entity(payload: dict[str, Any], entity_key: str) -> dict[str, Any]:
     payload_section = _require_dict(payload.get("payload"), path="payload")
-    kind_section = _require_dict(
-        payload_section.get(entity_key), path=f"payload.{entity_key}"
-    )
-    return _require_dict(
-        kind_section.get("entity"), path=f"payload.{entity_key}.entity"
-    )
+    kind_section = _require_dict(payload_section.get(entity_key), path=f"payload.{entity_key}")
+    return _require_dict(kind_section.get("entity"), path=f"payload.{entity_key}.entity")
 
 
 def _extract_issuer(entity: dict[str, Any]) -> str | None:

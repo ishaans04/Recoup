@@ -7,7 +7,6 @@ rolls the state change back with it. That last one is the Phase 1 ``unit_of_work
 guarantee proven at the layer that first depends on it.
 """
 
-
 import pytest
 from sqlalchemy import Engine, text
 

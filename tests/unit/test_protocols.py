@@ -362,9 +362,7 @@ def test_an_llm_implementation_satisfies_the_llm_client_protocol() -> None:
         (BreakerState, StubGateway()),
     ],
 )
-def test_an_unrelated_object_does_not_satisfy_a_protocol(
-    protocol: type, impostor: object
-) -> None:
+def test_an_unrelated_object_does_not_satisfy_a_protocol(protocol: type, impostor: object) -> None:
     """The conformance assertions above would be worthless if everything passed."""
     assert not isinstance(impostor, protocol)
 

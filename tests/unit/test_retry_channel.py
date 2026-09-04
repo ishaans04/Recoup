@@ -6,7 +6,6 @@ exception becomes a bounded non-recovery rather than propagating. The breaker is
 the outcome of every attempt so the loop stays closed.
 """
 
-
 from recoup.channels.retry import PaymentRetryChannel, idempotency_key_for
 from recoup.clock import SimulatedClock
 from recoup.domain.enums import ActionType, Channel

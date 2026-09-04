@@ -104,9 +104,7 @@ def test_wellsigned_but_malformed_body_fails_as_parse_error(ingestor: Ingestor) 
         ingestor.ingest_raw(garbage, _signed(garbage))
 
 
-def test_unconfigured_secret_rejects_everything(
-    repo: WorkItemRepo, clock: SimulatedClock
-) -> None:
+def test_unconfigured_secret_rejects_everything(repo: WorkItemRepo, clock: SimulatedClock) -> None:
     """No webhook secret configured is a misconfiguration, not permission to accept
     unsigned traffic (PRD 14)."""
     ingestor = Ingestor(repo, clock, webhook_secret=None)

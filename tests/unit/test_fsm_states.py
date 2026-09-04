@@ -42,9 +42,7 @@ def test_the_table_matches_the_prd_lifecycle_exactly() -> None:
         State.DETECTED: frozenset({State.DIAGNOSED}),
         State.DIAGNOSED: frozenset({State.ACTION_CHOSEN}),
         State.ACTION_CHOSEN: frozenset({State.CONSTRAINT_CHECKED}),
-        State.CONSTRAINT_CHECKED: frozenset(
-            {State.SCHEDULED, State.EXECUTED, State.ESCALATED}
-        ),
+        State.CONSTRAINT_CHECKED: frozenset({State.SCHEDULED, State.EXECUTED, State.ESCALATED}),
         State.SCHEDULED: frozenset({State.EXECUTED, State.ESCALATED}),
         State.EXECUTED: frozenset({State.RESOLVED, State.ACTION_CHOSEN, State.ESCALATED}),
         State.RESOLVED: frozenset(),

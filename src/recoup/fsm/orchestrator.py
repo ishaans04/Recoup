@@ -309,8 +309,7 @@ class Orchestrator:
         outcome = self._pending_outcomes.pop(txn_id, None)
         if outcome is None:
             raise RuntimeError(
-                f"no pending gate outcome cached for {txn_id}; advance() was called "
-                "out of order"
+                f"no pending gate outcome cached for {txn_id}; advance() was called out of order"
             )
         return outcome
 

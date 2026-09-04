@@ -48,9 +48,7 @@ def test_create_if_absent_with_a_fresh_event_id_creates_a_second_row(engine: Eng
     repo = WorkItemRepo(engine)
     repo.create_if_absent(make_work_item())
 
-    _, created = repo.create_if_absent(
-        make_work_item(txn_id="pay_Second", event_id="evt_Second")
-    )
+    _, created = repo.create_if_absent(make_work_item(txn_id="pay_Second", event_id="evt_Second"))
 
     assert created is True
     assert repo.count_by_state() == {State.DETECTED: 2}
@@ -311,9 +309,7 @@ def test_list_paginates_correctly_when_created_at_ties(engine: Engine) -> None:
     """A batch run inserts many items in the same instant; txn_id must break the tie."""
     repo = WorkItemRepo(engine)
     for i in range(4):
-        repo.save(
-            make_work_item(txn_id=f"pay_{i}", event_id=f"evt_{i}", created_at=CREATED_AT)
-        )
+        repo.save(make_work_item(txn_id=f"pay_{i}", event_id=f"evt_{i}", created_at=CREATED_AT))
 
     first_page = repo.list(limit=2)
     cursor = encode_cursor(first_page[-1])

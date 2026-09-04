@@ -213,9 +213,7 @@ def test_assignment_is_revalidated() -> None:
 def test_diagnosis_rejects_an_empty_rationale(rationale: str) -> None:
     """PRD section 11.1: every diagnosis carries a rationale into the audit log."""
     with pytest.raises(ValidationError) as exc:
-        Diagnosis(
-            cause=Cause.UNKNOWN, confidence=0.4, rationale=rationale, source="fallback"
-        )
+        Diagnosis(cause=Cause.UNKNOWN, confidence=0.4, rationale=rationale, source="fallback")
 
     assert "empty" in str(exc.value)
 

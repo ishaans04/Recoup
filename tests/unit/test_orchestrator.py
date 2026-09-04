@@ -146,9 +146,7 @@ async def test_gate_refusal_routes_to_escalated_with_reason(
     assert final.state is State.ESCALATED
     with engine.connect() as conn:
         reason = conn.execute(
-            text(
-                "SELECT rationale FROM audit_events WHERE txn_id = :t AND to_state = 'ESCALATED'"
-            ),
+            text("SELECT rationale FROM audit_events WHERE txn_id = :t AND to_state = 'ESCALATED'"),
             {"t": item.txn_id},
         ).scalar_one()
     assert "amount_cap" in reason

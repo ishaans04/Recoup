@@ -157,51 +157,86 @@ Everything here runs offline, needs zero credentials, and ends with a fully work
 
 ```python
 class State(StrEnum):
-    DETECTED = "DETECTED"; DIAGNOSED = "DIAGNOSED"; ACTION_CHOSEN = "ACTION_CHOSEN"
-    CONSTRAINT_CHECKED = "CONSTRAINT_CHECKED"; SCHEDULED = "SCHEDULED"
-    EXECUTED = "EXECUTED"; RESOLVED = "RESOLVED"; ESCALATED = "ESCALATED"
+    DETECTED = "DETECTED"
+    DIAGNOSED = "DIAGNOSED"
+    ACTION_CHOSEN = "ACTION_CHOSEN"
+    CONSTRAINT_CHECKED = "CONSTRAINT_CHECKED"
+    SCHEDULED = "SCHEDULED"
+    EXECUTED = "EXECUTED"
+    RESOLVED = "RESOLVED"
+    ESCALATED = "ESCALATED"
+
 
 class Cause(StrEnum):
-    INSUFFICIENT_FUNDS = "insufficient_funds"; GATEWAY_DEGRADATION = "gateway_degradation"
-    SOFT_DECLINE = "soft_decline"; EXPIRED_INSTRUMENT = "expired_instrument"
-    FRAUD_FLAGGED = "fraud_flagged"; UNKNOWN = "unknown"
+    INSUFFICIENT_FUNDS = "insufficient_funds"
+    GATEWAY_DEGRADATION = "gateway_degradation"
+    SOFT_DECLINE = "soft_decline"
+    EXPIRED_INSTRUMENT = "expired_instrument"
+    FRAUD_FLAGGED = "fraud_flagged"
+    UNKNOWN = "unknown"
+
 
 class ActionType(StrEnum):
-    SCHEDULED_RETRY = "scheduled_retry"; BACKOFF_RETRY = "backoff_retry"
-    IMMEDIATE_RETRY = "immediate_retry"; CUSTOMER_NUDGE = "customer_nudge"
-    NO_ACTION = "no_action"; ESCALATE = "escalate"
+    SCHEDULED_RETRY = "scheduled_retry"
+    BACKOFF_RETRY = "backoff_retry"
+    IMMEDIATE_RETRY = "immediate_retry"
+    CUSTOMER_NUDGE = "customer_nudge"
+    NO_ACTION = "no_action"
+    ESCALATE = "escalate"
+
 
 class Channel(StrEnum):
-    PAYMENT_RETRY = "payment_retry"; VOICE = "voice"; SMS = "sms"
-    EMAIL = "email"; HUMAN_QUEUE = "human_queue"
+    PAYMENT_RETRY = "payment_retry"
+    VOICE = "voice"
+    SMS = "sms"
+    EMAIL = "email"
+    HUMAN_QUEUE = "human_queue"
 ```
 
 - [ ] Write `domain/models.py` — the shared types every later phase imports. Mirrors PRD §10.1/§10.2 exactly, except `amount` → `amount_paise: int`:
 
 ```python
 class Customer(BaseModel):
-    name: str; phone: str | None; email: str | None
+    name: str
+    phone: str | None
+    email: str | None
 
-class Diagnosis(BaseModel):          # produced in Phase 4, consumed in Phases 5, 6, 10
-    cause: Cause; confidence: float; rationale: str
+
+class Diagnosis(BaseModel):  # produced in Phase 4, consumed in Phases 5, 6, 10
+    cause: Cause
+    confidence: float
+    rationale: str
     source: Literal["rules", "llm", "fallback"]
 
-class Action(BaseModel):             # produced in Phase 5, gated in Phase 6, run in Phase 7+
-    type: ActionType; channel: Channel
+
+class Action(BaseModel):  # produced in Phase 5, gated in Phase 6, run in Phase 7+
+    type: ActionType
+    channel: Channel
     scheduled_for: datetime | None = None
     attempt: int = 0
-    reason: str                      # human-readable "why this action"
+    reason: str  # human-readable "why this action"
 
-class FailureContext(BaseModel):     # input to the LLM in Phases 4/11
-    failure_code: str; failure_message: str; method: str | None
-    issuer: str | None; failure_type: str; amount_paise: int
 
-class ExecutionResult(BaseModel):    # returned by the executor in Phase 6, filled in Phase 7
-    recovered: bool; channel: Channel; detail: str
+class FailureContext(BaseModel):  # input to the LLM in Phases 4/11
+    failure_code: str
+    failure_message: str
+    method: str | None
+    issuer: str | None
+    failure_type: str
+    amount_paise: int
+
+
+class ExecutionResult(BaseModel):  # returned by the executor in Phase 6, filled in Phase 7
+    recovered: bool
+    channel: Channel
+    detail: str
     provider_ref: str | None = None
 
-class WorkItem(BaseModel): ...       # PRD §10.1, with amount_paise and state: State
-class AuditEvent(BaseModel): ...     # PRD §10.2, verbatim
+
+class WorkItem(BaseModel): ...  # PRD §10.1, with amount_paise and state: State
+
+
+class AuditEvent(BaseModel): ...  # PRD §10.2, verbatim
 ```
 - [ ] Write `clock.py` — `Clock` Protocol (`now() -> datetime`), `SystemClock`, `SimulatedClock(start, advance())`
 - [ ] **Write every cross-layer Protocol declaration** (pre-flight ruling: P0 owns interfaces, later phases own implementations — this is what makes the adapter story in PRD §8.4/§9.3 real). Declarations only, no implementations:
@@ -214,28 +249,36 @@ class PaymentGateway(Protocol):
     async def retry_payment(self, txn_id: str, idempotency_key: str) -> ExecutionResult: ...
     async def send_payment_link(self, txn_id: str) -> str: ...
 
+
 # channels/base.py
 class RecoveryChannel(Protocol):
     name: Channel
+
     def can_handle(self, item: WorkItem) -> bool: ...
     async def execute(self, item: WorkItem, action: Action) -> ChannelResult: ...
+
 
 class ChannelRegistry:
     """Real behaviour with zero channels registered: resolve() returns None and the
     executor escalates 'no channel available'. Implementations register in P7/P13/P14."""
 
+
 # diagnosis/base.py
 class LLMClient(Protocol):
     async def classify(self, ctx: FailureContext) -> Diagnosis | None: ...
+
 
 # constraints/base.py
 class BreakerState(Protocol):
     def is_open(self, route: str) -> bool: ...
 
+
 class NullBreaker:
     """Always-closed breaker. A complete, correct implementation for 'no breaker
     configured' — P7 swaps in the real CircuitBreaker. Not a stub."""
-    def is_open(self, route: str) -> bool: return False
+
+    def is_open(self, route: str) -> bool:
+        return False
 ```
 - [ ] Write `config.py` — `pydantic-settings` `Settings` with every key **optional**, plus `RECOUP_MODE: Literal["mock","live"] = "mock"`. Add `.env.example` annotating which phase needs each key
 - [ ] Write `docs/interface-contract.md` and **freeze it**:
@@ -289,8 +332,7 @@ BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END;
 
 ```python
 class StateMachine:
-    def transition(self, item: WorkItem, to: State, *, rationale: str,
-                   **audit_fields) -> WorkItem:
+    def transition(self, item: WorkItem, to: State, *, rationale: str, **audit_fields) -> WorkItem:
         """Validate → mutate → checkpoint → append audit row. Atomic.
         Raises IllegalTransition if `to` is not in LEGAL_TRANSITIONS[item.state].
         Raises TerminalStateError if item.state is terminal (PRD §12.2 stopping rule)."""
@@ -337,6 +379,7 @@ HTTP transport comes in Phase 9 — this phase is the pure logic, so it is unit-
 
 ```python
 from recoup.domain.models import Diagnosis, FailureContext
+
 
 class LLMClient(Protocol):
     async def classify(self, ctx: FailureContext) -> Diagnosis | None:
@@ -409,14 +452,19 @@ class LLMClient(Protocol):
 ```python
 @dataclass(frozen=True)
 class GatePass:
-    txn_id: str; action: Action; checked_at: datetime; token: str
+    txn_id: str
+    action: Action
+    checked_at: datetime
+    token: str
+
 
 @dataclass(frozen=True)
 class GateVerdict:
     result: Literal["PASS", "FAIL"]
-    rule_id: str | None          # which rule refused, e.g. "amount_cap"
-    reason: str                  # "amount_cap: ₹75,000 > ₹50,000"  ← shown on the dashboard
-    gate_pass: GatePass | None   # populated only when result == "PASS"
+    rule_id: str | None  # which rule refused, e.g. "amount_cap"
+    reason: str  # "amount_cap: ₹75,000 > ₹50,000"  ← shown on the dashboard
+    gate_pass: GatePass | None  # populated only when result == "PASS"
+
 
 class ConstraintGate:
     def check(self, action: Action, item: WorkItem) -> GateVerdict:
@@ -438,9 +486,11 @@ class ConstraintGate:
 
 ```python
 def test_only_the_executor_may_import_recovery_channels():
-    offenders = [m for m in walk_modules("src/recoup")
-                 if imports_from(m, "recoup.channels")
-                 and m not in ALLOWED]  # {execution.executor, channels.*}
+    offenders = [
+        m
+        for m in walk_modules("src/recoup")
+        if imports_from(m, "recoup.channels") and m not in ALLOWED
+    ]  # {execution.executor, channels.*}
     assert offenders == [], f"Gate bypass: {offenders} import channels directly"
 ```
 
