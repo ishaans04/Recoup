@@ -22,8 +22,11 @@ from dataclasses import dataclass
 from sqlalchemy import Engine
 
 from recoup.channels.base import ChannelRegistry
+from recoup.channels.factory import build_nudge_channels
 from recoup.channels.retry import PaymentRetryChannel
+from recoup.channels.router import ChannelRouter
 from recoup.clock import Clock
+from recoup.config import Settings
 from recoup.constraints.gate import ConstraintGate
 from recoup.constraints.rules import default_rules
 from recoup.diagnosis.base import LLMClient
@@ -79,6 +82,7 @@ def build_recovery_runtime(
     llm: LLMClient | None = None,
     webhook_secret: str | None = None,
     sink: EventSink | None = None,
+    settings: Settings | None = None,
 ) -> RecoveryRuntime:
     """Assemble the full recovery stack around one engine, clock and gateway.
 
@@ -101,7 +105,11 @@ def build_recovery_runtime(
     )
     registry = ChannelRegistry()
     registry.register(PaymentRetryChannel(gateway, breaker))
-    executor = ActionExecutor(gate, registry)
+    if settings is not None:
+        for channel in build_nudge_channels(settings, gateway):
+            registry.register(channel)
+    nudge_router = ChannelRouter(registry, audit, clock)
+    executor = ActionExecutor(gate, registry, nudge_router)
     pipeline = GatePipeline(
         gate,
         executor,

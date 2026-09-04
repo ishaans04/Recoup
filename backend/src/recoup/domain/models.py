@@ -238,6 +238,11 @@ class ChannelResult(RecoupModel):
     """The upstream identifier — message SID, call SID, payment id — that makes the
     claim checkable against the provider's own records."""
 
+    channel: Channel | None = None
+    """The channel that actually acted, set when a router tried several and one
+    delivered. ``None`` when the caller already knows which channel ran (the executor
+    then uses the resolved channel's own name)."""
+
 
 class ExecutionResult(RecoupModel):
     """What the executor reports after gating, running and recording an action.

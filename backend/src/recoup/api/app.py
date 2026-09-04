@@ -189,6 +189,7 @@ def _build_context(settings: Settings) -> AppContext:
         webhook_secret=settings.razorpay_webhook_secret,
         sink=publisher,
         llm=build_llm(settings, clock),
+        settings=settings,
     )
     return AppContext(
         settings=settings,
