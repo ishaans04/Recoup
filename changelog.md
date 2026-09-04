@@ -621,6 +621,45 @@ constraint gate refusing the Rs 75,000 case.
 
 ---
 
+### Phase 11 — Groq Tier-2 diagnosis
+_Status: complete_
+
+Satisfies PRD §9.2 (the Groq choice), §11.1 (the two-tier engine's second tier),
+§13.1 (rate-limit handling and degrade-don't-stop), §13.2 (a bad model response never
+moves money) and §13.3 (pre-cache for a stall-proof demo). CREDENTIAL GATE:
+`GROQ_API_KEY` (absent → rules-only, still fully functional).
+
+Phase 4 already built and proved the two-tier engine against a fake; this phase
+supplies the one real client it composes, and changes nothing about the engine.
+
+#### Added
+
+- `recoup.diagnosis.prompts` — the strict-JSON classification prompt: the six `Cause`
+  values verbatim, `unknown` as an explicitly correct answer, an audit-ready rationale,
+  and two few-shot examples drawn from the genuinely ambiguous tail.
+- `recoup.diagnosis.groq_client.GroqClient` — implements `LLMClient`. JSON mode; every
+  failure path returns `None` (the engine's safe fallback); a clock-aged 30 RPM rate
+  limiter; a 429 retry honouring `Retry-After`; an on-disk cache keyed by the failure
+  context (a hit spends no network and no rate-limit budget). The API key is held
+  privately and never logged, raised, or shown in a `repr`.
+- `recoup.diagnosis.factory.build_llm` — the single selection point (key present →
+  `GroqClient`, absent → `None`), wired through the API, the batch runner and the CLI.
+- 11 respx-mocked unit tests plus one opt-in `-m live` test. 465 tests total.
+
+#### Decisions
+
+- **Model = `openai/gpt-oss-120b`.** The Llama 3.x models the PRD sketch named were
+  retired from Groq's free catalogue (the live `/models` endpoint returns
+  `model_not_found` for them). `gpt-oss-120b` supports JSON mode and follows the
+  classification prompt reliably; `gpt-oss-20b` did not (returned unusable content),
+  so the larger model is the default. Confirmed live: the seed-42 batch's one
+  ambiguous scenario is now classified `source=llm`, the rest stay `rules`, and the
+  recovery rate is unchanged at 52.7%.
+- The rate limiter and the retry backoff take an injectable `sleep` so both are driven
+  deterministically by a `SimulatedClock` in tests, with no real waiting.
+
+---
+
 ## Phase index
 
 | # | Phase | PRD sections | Status |
@@ -636,7 +675,7 @@ constraint gate refusing the Rs 75,000 case.
 | 8 | End-to-end batch & honest metrics | §5.1, §7.4, §13.4, §15.1 | complete |
 | 9 | FastAPI: webhooks, REST, WebSocket | §8.1, §8.8, §9.5, §14 | complete |
 | 10 | Next.js dashboard | §8.8, §9.4, §12.4, §15.1 | complete |
-| 11 | Groq LLM Tier-2 diagnosis | §9.2, §11.1, §13.1 | pending |
+| 11 | Groq LLM Tier-2 diagnosis | §9.2, §11.1, §13.1 | complete |
 | 12 | Razorpay live adapter | §9.3, §13.1 | pending |
 | 13 | SMS & email nudge channels | §8.7, §9.8, §13.1 | pending |
 | 14 | Hinglish voice recovery call | §9.7, §11.4, §16.4 | pending |
