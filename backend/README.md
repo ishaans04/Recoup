@@ -32,6 +32,35 @@ environment the application runs in `mock` mode and selects mock adapters.
 `mypy` runs in strict mode over `src/recoup`. Findings are fixed in the code; the
 setting is not relaxed.
 
+## Running the service
+
+```
+uv run uvicorn recoup.api.app:app --port 8000
+```
+
+Serves the webhook (`POST /webhooks/razorpay`), the REST surface under `/api`, and
+the WebSocket stream at `/ws`, all per [`docs/interface-contract.md`](../docs/interface-contract.md).
+With an empty `.env` the service runs in `mock` mode; `GET /api/health` reports the
+mode. `POST /api/batch/run` drives a synthetic batch and streams `batch.progress`
+and `batch.completed` over `/ws`; `POST /api/demo/inject` injects the Rs 75,000
+guardrail case through the real gate.
+
+Headless batch (no server): `uv run python -m recoup.batch --n 50 --seed 42 --report`.
+
+## Generating the frontend API types
+
+The dashboard's TypeScript types are generated from this service's OpenAPI schema,
+so a contract drift breaks the frontend build rather than the demo. With the server
+running on port 8000:
+
+```
+npm --prefix ../frontend run gen:types
+```
+
+This writes `frontend/src/lib/api-types.d.ts` from `http://localhost:8000/openapi.json`
+(via `openapi-typescript`). Requires network access the first time to fetch the
+generator.
+
 ## Layout
 
 ```

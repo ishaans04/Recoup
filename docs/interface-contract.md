@@ -818,3 +818,27 @@ Emitted once when a batch finishes. `payload` is the `GET /api/batch/{run_id}` b
    adding a message type non-breaking.
 6. **Ordering is by `seq`, not arrival.** The client applies frames in `seq` order and drops any
    frame whose `seq` it has already applied.
+
+---
+
+## 6. Phase 9 additions (additive, non-breaking)
+
+These were appended when the FastAPI service was implemented. Each is additive per
+the freeze rules above (a new optional field, a new message type, or a clarified
+value set); no path, existing field, or envelope changed.
+
+1. **`heartbeat` WebSocket message type.** The server sends
+   `{"type":"heartbeat","seq":<current_seq>,"ts":...,"payload":{}}` roughly every 15
+   seconds so a silent connection is detectable. It carries the current `seq` and
+   advances nothing; per rule 5 an unknown type is ignored and safe to drop.
+2. **`gate.rejected.constraint` value set.** The value is the constraint rule id that
+   refused the action, drawn from the actual rule set:
+   `retry_cap`, `amount_cap`, `fraud_block`, `terminal_stop`, `circuit_open`,
+   `channel_available` (the frozen doc's earlier `stopping_rule` is realised as
+   `terminal_stop`). Per rule 4 the dashboard renders any value verbatim.
+3. **`batch.progress.current_txn_id` may be `null`.** The runner reports progress as a
+   settled-count delta rather than naming the in-flight transaction, so this field is
+   `null` in this implementation. `processed`, `size`, `recovered` and `escalated`
+   are always present.
+4. **Datetime offset.** Every timestamp is serialised in `+05:30` (Asia/Kolkata) as
+   the contract requires, converted from the UTC the store round-trips through.
