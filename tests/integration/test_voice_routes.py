@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import tempfile
 from collections.abc import AsyncIterator, Iterator
+from pathlib import Path
 
 import httpx
 import pytest
@@ -95,6 +96,59 @@ async def test_twiml_route_returns_the_hinglish_script(client: httpx.AsyncClient
     assert "<Gather" in body
     assert "fail ho gaya" in body  # Hinglish
     assert "Rs 45,000" in body
+    # Default (non-premium) voice uses Twilio's free native <Say>, not ElevenLabs.
+    assert "<Say" in body
+    assert "<Play>" not in body
+
+
+async def test_premium_voice_twiml_plays_the_elevenlabs_audio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Premium voice on, with the audio already cached, so no ElevenLabs call is made
+    # and no real credential is used. The TwiML must <Play> the cached MP3, and the
+    # audio route must serve it.
+    with tempfile.TemporaryDirectory(prefix="recoup-voice-cache-") as cache_dir:
+        cache = Path(cache_dir)
+        monkeypatch.setattr("recoup.api.voice._VOICE_AUDIO_CACHE", cache)
+        (cache / f"{_TXN}.mp3").write_bytes(b"ID3-fake-mp3-bytes")
+
+        with tempfile.TemporaryDirectory(prefix="recoup-voice-db-") as db_dir:
+            settings = Settings(
+                _env_file=None,
+                database_url=f"sqlite:///{db_dir}/v.db".replace("\\", "/"),
+                twilio_account_sid="AC_test",
+                twilio_auth_token=_TOKEN,
+                twilio_phone_number="+15005550006",
+                public_base_url=_BASE,
+                elevenlabs_api_key="fake-elevenlabs-key",
+                use_premium_voice=True,
+            )
+            app = create_app(settings)
+            app.state.ctx.runtime.repo.create_if_absent(
+                make_work_item(
+                    txn_id=_TXN,
+                    event_id="evt_voice1",
+                    amount_paise=4_500_000,
+                    customer=Customer(name="Asha", phone="+919876543210"),
+                )
+            )
+            transport = httpx.ASGITransport(app=app)
+            try:
+                async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                    twiml = (await client.get(f"/voice/twiml/{_TXN}")).text
+                    assert "<Play>" in twiml
+                    assert f"/voice/audio/{_TXN}" in twiml
+
+                    audio = await client.get(f"/voice/audio/{_TXN}")
+                    assert audio.status_code == 200
+                    assert audio.headers["content-type"].startswith("audio/mpeg")
+                    assert audio.content == b"ID3-fake-mp3-bytes"
+            finally:
+                app.state.ctx.engine.dispose()
+
+
+async def test_voice_audio_returns_404_when_not_rendered(client: httpx.AsyncClient) -> None:
+    assert (await client.get(f"/voice/audio/{_TXN}")).status_code == 404
 
 
 async def test_keypress_1_triggers_payment_link_sms(

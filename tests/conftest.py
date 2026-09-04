@@ -20,6 +20,38 @@ from recoup.storage.db import create_engine_for, init_schema
 
 CREATED_AT = datetime(2026, 9, 3, 14, 32, 5, tzinfo=IST)
 
+_CREDENTIAL_ENV_VARS = (
+    "GROQ_API_KEY",
+    "RAZORPAY_KEY_ID",
+    "RAZORPAY_KEY_SECRET",
+    "RAZORPAY_WEBHOOK_SECRET",
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_PHONE_NUMBER",
+    "RESEND_API_KEY",
+    "ELEVENLABS_API_KEY",
+    "PUBLIC_BASE_URL",
+    "USE_PREMIUM_VOICE",
+    "RECOUP_MODE",
+)
+
+
+@pytest.fixture(autouse=True)
+def _credential_free_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run the whole suite with no real credentials — the single hard guarantee that
+    testing never uses an API key or the Twilio phone number.
+
+    Every test builds :class:`~recoup.config.Settings` with the ``.env`` file
+    disabled and every credential environment variable cleared, so `Settings()`
+    resolves to `mock` mode with no keys and the mock adapters fill in for every
+    external service. Runs automatically before every test (autouse), ahead of the
+    fixtures that construct settings, so a real `.env` on the developer's machine can
+    never leak a live key into a test run.
+    """
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    for var in _CREDENTIAL_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
 
 @pytest.fixture
 def engine() -> Iterator[Engine]:
