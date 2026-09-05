@@ -5,20 +5,24 @@
  * projected in a dim room and read at a glance, so it does not follow the
  * viewer's colour-scheme preference — a light flash mid-demo would be worse than
  * an unwanted dark theme ever is.
+ *
+ * The palette below is the design comp's, expressed as tokens: a near-black
+ * ground, cyan as the primary accent, green for a passed gate, amber for a
+ * refusal, blue and violet for the ambient field. Severity reads by hue, so a
+ * glance at a row tells you what happened before you read a word of it.
  */
-
 :root {
-  --console-bg: #07090d;
-  --console-panel: #0d1219;
-  --console-panel-raised: #121a24;
-  --console-border: #1d2733;
-  --console-text: #e6edf5;
-  --console-muted: #7d8da3;
-  --console-accent: #35d6a4;
-  --console-warn: #f2b544;
-  --console-danger: #ff5f56;
-  --console-info: #4d8dff;
-  --console-grid: rgba(53, 214, 164, 0.06);
+  --console-bg: #06060a;
+  --console-panel: #0a0a10;
+  --console-panel-raised: #0f0f18;
+  --console-border: #1c1c26;
+  --console-text: #e9e9f0;
+  --console-muted: #8b8b99;
+  --console-accent: oklch(0.78 0.13 197);
+  --console-warn: oklch(0.86 0.14 75);
+  --console-danger: oklch(0.72 0.17 32);
+  --console-info: oklch(0.82 0.1 258);
+  --console-grid: rgba(255, 255, 255, 0.032);
 }
 
 @theme inline {
@@ -32,23 +36,36 @@
   --color-console-warn: var(--console-warn);
   --color-console-danger: var(--console-danger);
   --color-console-info: var(--console-info);
+  /* Space Grotesk carries the display and body text; JetBrains Mono every
+     technical column — audit rows, amounts, state names — where digits must
+     line up and a zero must never be mistaken for an O. Both are self-hosted
+     by next/font, and each keeps a full system fallback so a missing font file
+     degrades to the previous stack rather than to Times. */
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
+    var(--font-space-grotesk), "Helvetica Neue", Helvetica, ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   --font-mono:
-    ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono",
-    Menlo, Consolas, monospace;
+    var(--font-jetbrains-mono), ui-monospace, "SF Mono", "Cascadia Mono",
+    "Segoe UI Mono", "Roboto Mono", Menlo, Consolas, monospace;
 }
 
 html {
   color-scheme: dark;
+  scroll-behavior: smooth;
 }
 
 body {
-  background-color: var(--console-bg);
+  margin: 0;
+  background: var(--console-bg);
   color: var(--console-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: oklch(0.55 0.13 197);
+  color: #fff;
 }
 
 /* A faint grid, so the empty console reads as an instrument rather than a blank page. */
@@ -59,31 +76,79 @@ body {
   background-size: 48px 48px;
 }
 
-@keyframes status-pulse {
+/* ---------------------------------------------------------------------------
+ * Motion. Every keyframe below is paused wholesale under prefers-reduced-motion
+ * at the foot of this file, so the whole surface is legible without animation.
+ * ------------------------------------------------------------------------- */
+
+/* Stat cards drift at staggered periods, so the grid never pulses in lockstep. */
+@keyframes rc-float {
   0%,
   100% {
-    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
   50% {
-    opacity: 0.35;
+    transform: translate3d(0, -9px, 0);
   }
 }
 
-.status-pulse {
-  animation: status-pulse 2s ease-in-out infinite;
+/* The conic sweep behind the constraint-gate panel. */
+@keyframes rc-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .status-pulse {
-    animation: none;
+/* A live indicator: breathing, not blinking. */
+@keyframes rc-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
   }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* The scanline crossing the gate visual. */
+@keyframes rc-sweep {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(400%);
+  }
+}
+
+/* A new row landing on the live audit stream. */
+@keyframes rc-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rc-float {
+  animation: rc-float 7s ease-in-out infinite;
+}
+
+.rc-pulse {
+  animation: rc-pulse 1.8s ease-in-out infinite;
+}
+
+.rc-in {
+  animation: rc-in 260ms ease-out;
 }
 
 /* A brief highlight on an audit row when it lands live, so a judge watching
    the table can see the newest transition arrive without it being jarring. */
 @keyframes row-arrive {
   0% {
-    background-color: rgba(53, 214, 164, 0.22);
+    background-color: oklch(0.78 0.13 197 / 0.22);
   }
   100% {
     background-color: transparent;
@@ -94,8 +159,13 @@ body {
   animation: row-arrive 1.8s ease-out;
 }
 
+/* One switch for every moving part on the surface. */
 @media (prefers-reduced-motion: reduce) {
-  .row-arrive {
-    animation: none;
+  .rc-float,
+  .rc-pulse,
+  .rc-in,
+  .row-arrive,
+  [data-rc-motion] {
+    animation: none !important;
   }
 }
