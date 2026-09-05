@@ -58,3 +58,8 @@ desktop.ini
 
 # Groq classification cache (local, never committed)
 .recoup_cache/
+
+# --- Design reference ---
+# The source design comps the console and landing page were built from. Kept
+# locally as a visual reference; not part of the shipped application.
+src/Recoup Landing & Console Design/
