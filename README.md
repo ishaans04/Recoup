@@ -29,6 +29,10 @@
 
 </div>
 
+<p align="center">
+  <img src="docs/screenshots/01-landing-hero.png" alt="Recoup landing page — Recovery is a state machine, not a chatbot" width="100%">
+</p>
+
 ---
 
 ## Why Track 03: AI Revenue Recovery
@@ -57,6 +61,10 @@ These four look identical to a naive system: `status = failed`. They demand four
 | Not cherry-picked | Every batch report ships the full exception list, each with its refusal reason |
 
 A 100% recovery rate would be a bug, not a win. Recoup reports the transactions it could **not** save, and why.
+
+<p align="center">
+  <img src="docs/screenshots/02-landing-stats.png" alt="One batch run, honestly reported: 54% recovery rate, exceptions included" width="100%">
+</p>
 
 ---
 
@@ -92,6 +100,12 @@ The cause determines the action:
 | `expired_instrument` | Customer nudge | Voice → SMS → Email | No retry can *ever* succeed. Only the customer can fix this. |
 | `fraud_flagged` | No action | Human queue | Never auto-actioned. Ever. |
 | `unknown` | Escalate | Human queue | An honest "I don't know" beats a confident guess with someone's money |
+
+<p align="center">
+  <img src="docs/screenshots/03-landing-flow.png" alt="Three failures, three causes, three different actions — two recovered, the ₹75,000 case refused by the gate" width="100%">
+</p>
+
+<p align="center"><em>Three real transactions from one batch, each walking the same six stages to a different end: a salary-cycle retry, a customer nudge, and a gate refusal.</em></p>
 
 ---
 
@@ -159,6 +173,57 @@ BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END;
 ```
 
 `tests/unit/test_audit_immutability.py` issues a raw `UPDATE` and asserts the database aborts it. The state change and its audit row are written in **one transaction**, so a transition can never persist without its proof.
+
+---
+
+## The operations console
+
+Everything on the console is the backend's own data, hydrated from REST and then
+followed live over WebSocket — the metrics, the work items, the audit stream, the
+human queue and the gate tally all move together off one sequenced feed. The five
+sections below are the whole surface.
+
+### Work items and the audit chain
+
+Every failed payment, filterable by lifecycle, with the selected transaction's full
+trail beside it: the six-stage pipeline it walked, and each transition carrying its
+diagnosis, confidence, and a `RULES` / `LLM` badge — the two-tier engine made visible
+rather than merely claimed.
+
+<p align="center">
+  <img src="docs/screenshots/04-console-workitems.png" alt="Console — work items table with RULES/LLM badges beside the selected transaction's audit chain" width="100%">
+</p>
+
+### The gate, seen saying no
+
+The demo-critical panel (PRD §12.4). The three hard caps on the left, each carrying
+how many times it actually refused; the refusals on the right, each reading in the
+PRD's own worked shape — `Amount Cap: Rs 75,000 > Rs 50,000 ✗ → HALT → Escalate`,
+`no GatePass minted`.
+
+<p align="center">
+  <img src="docs/screenshots/05-console-gate.png" alt="Console — constraint gate and its live rejections refusing the ₹75,000 case" width="100%">
+</p>
+
+### Honest metrics — recovery by cause and by channel
+
+Two of PRD §15.1's required figures, as proportion bars with honest denominators, so
+a cause that recovered one of one cannot pass for one that recovered forty of forty.
+Causes the batch never saw are kept, not hidden.
+
+<p align="center">
+  <img src="docs/screenshots/06-console-by-cause.png" alt="Console — recovery by cause and actions by channel, with honest denominators" width="100%">
+</p>
+
+### The append-only log, live
+
+Every `audit.appended` frame as it arrives over `/ws`, newest first, each carrying the
+rationale recorded with it. The sequence number is the audit row's own id — watch it
+advance and you know nothing between two ids was skipped.
+
+<p align="center">
+  <img src="docs/screenshots/07-console-audit-stream.png" alt="Console — live audit stream over WebSocket with sequenced, rationale-carrying events" width="100%">
+</p>
 
 ---
 

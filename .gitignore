@@ -63,3 +63,6 @@ desktop.ini
 # The source design comps the console and landing page were built from. Kept
 # locally as a visual reference; not part of the shipped application.
 src/Recoup Landing & Console Design/
+
+# Playwright MCP scratch (snapshots, console logs) — never committed
+.playwright-mcp/
