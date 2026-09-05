@@ -188,6 +188,12 @@ export default function LiveNudgeControl({
         <div
           style={{
             ...GLASS,
+            background: "#0d1219",
+            backdropFilter: "none",
+            WebkitBackdropFilter: "none",
+            border: "1px solid rgba(244,63,94,0.2)",
+            boxShadow:
+              "0 24px 48px -12px rgba(0,0,0,0.7), 0 0 0 1px rgba(244,63,94,0.08)",
             position: "absolute",
             top: "calc(100% + 10px)",
             right: 0,
