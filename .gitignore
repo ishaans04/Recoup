@@ -66,3 +66,5 @@ src/Recoup Landing & Console Design/
 
 # Playwright MCP scratch (snapshots, console logs) — never committed
 .playwright-mcp/
+
+demo-pitch.md

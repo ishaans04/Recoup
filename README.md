@@ -229,95 +229,107 @@ advance and you know nothing between two ids was skipped.
 
 ## Technical architecture
 
-### The seven layers
+Seven layers, each behind an interface, assembled by a deterministic orchestrator.
+The diagram is the argument in one picture: the LLM only diagnoses, one gate is the
+only path to money, and every layer writes to an append-only log the database itself
+refuses to rewrite.
 
-```
-                          ┌─────────────────────────────────┐
-   Razorpay webhook  ────▶ │  L0  INGESTION                  │
-   (signed payload)        │  HMAC verify → normalize        │
-                          │  → dedupe on event_id           │
-                          └───────────────┬─────────────────┘
-                                          │
-                          ┌───────────────▼─────────────────┐
-                          │  L1  ORCHESTRATOR (FSM)         │
-                          │  deterministic · checkpointed   │
-                          └───────────────┬─────────────────┘
-                                          │
-                          ┌───────────────▼─────────────────┐
-                          │  L2  DIAGNOSIS ENGINE           │
-                          │  Tier 1 rules → Tier 2 Groq     │
-                          │  output: Diagnosis. Nothing more│
-                          └───────────────┬─────────────────┘
-                                          │
-                          ┌───────────────▼─────────────────┐
-                          │      ACTION SELECTOR            │
-                          │  cause → one bounded action     │
-                          └───────────────┬─────────────────┘
-                                          │
-    ┌─────────────────┐   ┌───────────────▼─────────────────┐
-    │  L5 AUDIT TRAIL │◀──│  L4  CONSTRAINTS GATE  ⭐       │
-    │  append-only    │   │  THE ONLY DOOR TO MONEY         │
-    │  DB-enforced    │   │  mints GatePass (HMAC) on PASS  │
-    │  RAISE(ABORT)   │   │  FAIL → ESCALATED → human queue │
-    └─────────────────┘   └───────────────┬─────────────────┘
-             ▲                            │ requires valid GatePass
-             │            ┌───────────────▼─────────────────┐
-             │            │  L6  RECOVERY CHANNELS          │
-             └────────────│  retry · voice · SMS · email    │
-                          │  ordered fallback, each audited │
-                          └───────────────┬─────────────────┘
-                                          │
-                          ┌───────────────▼─────────────────┐
-                          │  L3  PAYMENT INTEGRATION        │
-                          │  Razorpay adapter + circuit     │
-                          │  breaker · mock-swappable       │
-                          └───────────────┬─────────────────┘
-                                          │
-                          ┌───────────────▼─────────────────┐
-                          │  L7  DASHBOARD                  │
-                          │  WebSocket · live · replayable  │
-                          └─────────────────────────────────┘
+```mermaid
+flowchart TD
+    WH["Razorpay webhook · signed payload"]
+    ING["L0 · Ingestion<br/>HMAC verify → normalize → dedupe on event_id"]
+    ORC["L1 · Orchestrator FSM<br/>deterministic · checkpointed"]
+    DIAG["L2 · Diagnosis engine<br/>Tier 1 rules → Tier 2 Groq · output: Diagnosis only"]
+    SEL["Action selector<br/>cause → one bounded action"]
+    GATE{"L4 · Constraint gate ⭐<br/>the only door to money<br/>mints GatePass HMAC on PASS"}
+    CH["L6 · Recovery channels<br/>retry → voice → SMS → email · each attempt audited"]
+    PAY["L3 · Payment integration<br/>Razorpay adapter + circuit breaker · mock-swappable"]
+    AUD[("L5 · Audit trail<br/>append-only · DB-enforced · RAISE ABORT")]
+    ESC["Escalated → human queue"]
+    WS["L7 · Dashboard<br/>WebSocket · live · replayable"]
+
+    WH --> ING --> ORC --> DIAG --> SEL --> GATE
+    GATE -->|FAIL| ESC
+    GATE -->|"PASS + valid GatePass"| CH --> PAY
+    ORC -. every transition .-> AUD
+    GATE -. verdict .-> AUD
+    CH -. outcome .-> AUD
+    ESC -. logged .-> AUD
+    AUD --> WS
+
+    classDef gate fill:#3a1512,stroke:#e0533a,stroke-width:2px,color:#ffffff;
+    classDef audit fill:#0d2a1a,stroke:#2ea44f,stroke-width:2px,color:#ffffff;
+    class GATE gate;
+    class AUD audit;
 ```
 
 ### The state machine
 
-```
-                        ┌──────────┐
-                        │ DETECTED │
-                        └────┬─────┘
-                             ▼
-                        ┌──────────┐
-                        │DIAGNOSED │
-                        └────┬─────┘
-                             ▼
-                     ┌───────────────┐
-              ┌─────▶│ ACTION_CHOSEN │
-              │      └───────┬───────┘
-              │              ▼
-              │    ┌───────────────────┐
-              │    │CONSTRAINT_CHECKED │
-              │    └─────┬────────┬────┘
-              │     PASS │        │ FAIL
-              │          ▼        │
-              │    ┌───────────┐  │
-              │    │ SCHEDULED │  │   (circuit open → park here)
-              │    └─────┬─────┘  │
-              │          ▼        │
-              │    ┌──────────┐   │
-              │    │ EXECUTED │   │
-              │    └──┬────┬──┘   │
-              │       │    │      │
-        retries       │    │      │
-        remain ───────┘    │      │
-        (bounded)          ▼      ▼
-                    ┌──────────┐ ┌────────────┐
-                    │ RESOLVED │ │ ESCALATED  │
-                    └──────────┘ └────────────┘
-                       terminal      terminal
-                                   (human queue)
+Eight states. Two are terminal; a further transition out of either raises
+`TerminalStateError`. The loop back to `ACTION_CHOSEN` is bounded by `retry_cap`, so
+nothing can retry forever.
+
+```mermaid
+stateDiagram-v2
+    [*] --> DETECTED
+    DETECTED --> DIAGNOSED
+    DIAGNOSED --> ACTION_CHOSEN
+    ACTION_CHOSEN --> CONSTRAINT_CHECKED
+    CONSTRAINT_CHECKED --> SCHEDULED: PASS
+    CONSTRAINT_CHECKED --> ESCALATED: FAIL
+    SCHEDULED --> SCHEDULED: circuit open · park
+    SCHEDULED --> EXECUTED
+    EXECUTED --> RESOLVED: recovered
+    EXECUTED --> ACTION_CHOSEN: retry remains (bounded)
+    EXECUTED --> ESCALATED: retries exhausted
+    RESOLVED --> [*]
+    ESCALATED --> [*]
 ```
 
-`RESOLVED` and `ESCALATED` are terminal — a further transition raises `TerminalStateError`. The loop back to `ACTION_CHOSEN` is bounded by `retry_cap`.
+## Tech stack — and why we chose it
+
+| Technology | Where it's applied | Why this one |
+|---|---|---|
+| **Python 3.13** (via `uv`) | Backend language, packaging, runtime | Pinned for the broadest wheel coverage; `uv` gives fast, frozen, reproducible installs (`uv sync --frozen`) |
+| **Plain-Python FSM** | Orchestration (L1) | Chosen over LangGraph: explicit states, zero framework magic, a checkpoint is one DB write — it reinforces "bounded, not autonomous" rather than undercutting it |
+| **FastAPI** | REST + WebSocket API (L7) | Async-native, and its OpenAPI schema lets the Next.js contract be enforced instead of hand-synced |
+| **SQLAlchemy 2.0 + SQLite** | Persistence + audit log (L5) | Postgres-compatible schema with zero ops for the demo; SQLite `BEFORE UPDATE`/`DELETE` triggers make the audit log append-only at the database layer, not by convention |
+| **Pydantic v2 + pydantic-settings** | Domain models, config | Validation at every boundary; the closed `Diagnosis` enum that bounds the LLM; secrets read from the environment only |
+| **httpx** | Every external adapter | One async HTTP client and **no vendor SDKs**, so each integration sits behind the same seam — mockable, and testable with `respx` |
+| **Groq** (`openai/gpt-oss-120b`, JSON mode) | Tier-2 diagnosis (L2) | LPU-fast, so a 50-transaction batch resolves near-instantly on stage; free tier, JSON mode, and the returned cause is validated against the enum |
+| **Razorpay** (test mode) | Payment gateway (L3) | The track's platform; behind an adapter so the mock and the live client pass the *same* contract suite |
+| **Twilio** (Voice + SMS) | Nudge channels (L6) | Programmable voice with TwiML `<Gather>` (press 1 → link) and SMS; callbacks are signature-verified |
+| **Resend** | Email channel (L6) | A simple transactional-email API behind the same `RecoveryChannel` interface |
+| **ElevenLabs** | Premium Hinglish TTS | Opt-in hero-call audio; falls back to Twilio's native TTS for cost discipline |
+| **Next.js 16 + React 19 + TypeScript** | Dashboard (L7) | App-Router prerendering, typed against the API contract so drift becomes a compile error |
+| **Tailwind v4** | Dashboard styling | Utility-first; drives the console's liquid-glass tokens |
+| **pytest + respx** | Backend tests | Async tests with mocked HTTP; home of the load-bearing gate / audit / single-door tests |
+| **Vitest + Testing Library** | Frontend tests | Fast, jsdom-based component tests |
+| **ruff + mypy (strict)** | Lint, format, types | One fast linter/formatter; strict typing on the money-safe core |
+| **GitHub Actions** | CI | Runs both suites, lint, format and types on every push — so the badges are truthful |
+
+---
+
+## What's real, and what's simulated
+
+The money-safe core — the state machine, the constraint gate, the append-only audit
+log — is **real in every mode**. Only the edges of the system, the calls that reach
+the outside world, are swappable. With an empty `.env` every edge degrades to a
+working mock; with credentials and `RECOUP_MODE=live` the real services are used —
+always in test mode, never moving real money.
+
+| Capability | Real (credentials + `live`) | Simulated (default / no keys) | Notes |
+|---|---|---|---|
+| State machine · gate · audit log | ✅ always real | — | Identical in both modes; this is the part being proven |
+| Payment gateway | Razorpay test-mode API | Seeded `MockGateway` | Both pass the same contract suite |
+| **Batch run** | — | **Always** seeded `MockGateway`, no channels | By construction a batch cannot call or email a real person |
+| Diagnosis Tier 2 | Groq classifies the ambiguous tail | Rules only → unmatched becomes `unknown` → escalate | The LLM is invoked only when the rules table misses |
+| Voice call | Real Twilio Hinglish call + keypress | Channel not built; chain falls through | Trial accounts call verified numbers only |
+| SMS | Real Twilio SMS with payment link | Channel not built | |
+| Email | Real Resend email | Channel not built | The sandbox sender reaches the account owner only |
+| Premium voice audio | ElevenLabs MP3 | Twilio native TTS | Opt-in via `USE_PREMIUM_VOICE` |
+| Webhook ingestion | Real signed Razorpay webhook (via ngrok) | `POST /api/demo/inject` | Both take the signature-verified path |
+| Money movement | Razorpay **test mode** only | Mock returns scripted results | No real money in any mode |
 
 ---
 
@@ -356,6 +368,44 @@ A failed nudge is still a recorded, bounded outcome. Channels that cannot reach 
 This is a safety property, not an oversight. A 50-transaction synthetic batch contains fabricated customers with fabricated phone numbers. Wiring live Twilio credentials into that run would dial real strangers. The batch also always uses a seeded `MockGateway` regardless of `RECOUP_MODE`, because synthetic transaction IDs do not exist at Razorpay and calling the live API with them would produce nothing but errors.
 
 **A batch run cannot place a call, send an SMS, or send an email — by construction.** Real nudges flow only through the main runtime, which receives settings and reaches real people.
+
+---
+
+## Repository layout
+
+A flat repo: the Python package and the Next.js app share one root.
+
+```
+Recoup/
+├── src/
+│   ├── recoup/                 # backend package (Python 3.13)
+│   │   ├── domain/             # enums + Pydantic models (WorkItem, Diagnosis, Action…)
+│   │   ├── ingestion/          # signature verify · normalize · idempotency
+│   │   ├── fsm/                # states · machine · orchestrator
+│   │   ├── diagnosis/          # rules table + Groq client (the two-tier engine)
+│   │   ├── policy/             # cause→action selector · retry timing · channel policy
+│   │   ├── constraints/        # rules + ConstraintGate (the only door)
+│   │   ├── execution/          # ActionExecutor (requires a GatePass)
+│   │   ├── gateways/           # PaymentGateway: mock + Razorpay + circuit breaker
+│   │   ├── channels/           # retry · voice · SMS · email · router · factory
+│   │   ├── storage/            # SQLAlchemy tables · append-only audit · repo
+│   │   ├── batch/              # synthetic generator + batch runner
+│   │   ├── api/                # FastAPI app · webhooks · routes · ws · voice
+│   │   ├── runtime.py          # the one sanctioned channels-importer
+│   │   └── clock.py · money.py · events.py · metrics.py · config.py
+│   ├── app/                    # Next.js App Router — landing (/) and /console
+│   ├── components/             # console/ + landing/ React components
+│   └── lib/                    # API client · WebSocket hook · types · fixtures · formatters
+├── tests/                      # unit · integration · contract · architecture
+├── docs/                       # interface contract · setup guides · screenshots
+├── .github/workflows/ci.yml    # backend + dashboard CI
+├── prd.md · changelog.md       # the binding spec + the drift log
+├── pyproject.toml · uv.lock    # backend dependencies
+└── package.json                # frontend dependencies
+```
+
+The backend is 65 Python modules under `src/recoup/` with 44 test files across four
+suites; the dashboard is 22 React components under `src/`.
 
 ---
 
@@ -443,6 +493,25 @@ No `GatePass` is minted. No money moves. The item lands in the human queue with 
 | `USE_PREMIUM_VOICE` | Opt-in to ElevenLabs audio | Defaults to `false` — cost discipline |
 
 Secrets are read from the environment only, never committed, and never logged. `.env` is gitignored; `.env.example` documents every key.
+
+---
+
+## Security & guardrails
+
+Recoup is built defense-first: it recovers legitimately owed revenue through
+compliant channels, in test mode, and can prove every decision after the fact.
+
+| Control | How it's enforced |
+|---|---|
+| **Webhook signature verification** | Every inbound Razorpay webhook and every Twilio callback is HMAC-verified (constant-time) **before any parsing**; an unsigned or wrong-secret payload never reaches the normalizer |
+| **Idempotency** | Ingestion dedupes on `event_id`, so a webhook delivered twice never starts a second recovery or a duplicate money action |
+| **No secrets in code** | Every credential is read from the environment only; `.env` is gitignored, `.env.example` is committed, and keys are never logged or included in a repr |
+| **Bounded autonomy** | Hard caps (`retry_count ≤ 3`, `amount ≤ ₹50,000`, `fraud_flag == false`) the system cannot override, enforced centrally at one gate |
+| **The LLM cannot move money** | The model's only output is a `Diagnosis`; a malformed or out-of-enum response degrades to `unknown` → human, never to an action |
+| **Single door** | `ActionExecutor` requires an HMAC `GatePass` that only `ConstraintGate.check()` can mint; an AST test fails the build if any other module imports a channel |
+| **Immutable audit** | `audit_events` rows can be inserted but never updated or deleted — SQLite triggers `RAISE(ABORT)` on either |
+| **Human-in-the-loop** | Anything above a cap, fraud-flagged, or retry-exhausted is escalated to a human queue, never auto-actioned |
+| **Test mode only** | No production credentials; no real money moves in any mode |
 
 ---
 
