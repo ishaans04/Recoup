@@ -270,6 +270,16 @@ export class RecoupStreamClient {
 
 export interface UseRecoupStreamResult extends StreamState {
   status: StreamStatus;
+  /**
+   * True once the backend has actually answered — even if it had nothing to
+   * report.
+   *
+   * This is deliberately separate from `lastSeq > 0`. A backend that is running
+   * but has recorded no transitions yet is a completely different situation
+   * from one that is not there at all, and a console that conflates the two
+   * tells the operator to go start a process that is already running.
+   */
+  connected: boolean;
 }
 
 /**
@@ -284,6 +294,7 @@ export interface UseRecoupStreamResult extends StreamState {
 export function useRecoupStream(url: string = WS_URL): UseRecoupStreamResult {
   const [state, setState] = useState<StreamState>(initialStreamState);
   const [status, setStatus] = useState<StreamStatus>("connecting");
+  const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -291,6 +302,7 @@ export function useRecoupStream(url: string = WS_URL): UseRecoupStreamResult {
 
     async function hydrateThenConnect() {
       let seed = initialStreamState();
+      let snapshotOk = false;
       try {
         const [metrics, escalationsResponse, auditResponse, workItemsResponse] = await Promise.all([
           getMetrics(),
@@ -310,16 +322,26 @@ export function useRecoupStream(url: string = WS_URL): UseRecoupStreamResult {
           workItems,
           lastSeq: auditResponse.last_id,
         };
+        // The backend answered. It may have had nothing to report, which is a
+        // different fact from it being absent, and is recorded as such.
+        snapshotOk = true;
       } catch {
-        // Backend unreachable (or one snapshot call failed): start empty.
-        // The page falls back to fixtures until lastSeq genuinely moves.
+        // Backend unreachable (or one snapshot call failed): start empty and
+        // leave `connected` false, so the page can fall back to fixtures and
+        // say honestly that it could not reach anything.
       }
       if (cancelled) return;
       setState(seed);
+      setConnected(snapshotOk);
       client = new RecoupStreamClient(url, {
         initialLastSeq: seed.lastSeq,
         onEnvelope: (envelope) => setState((prev) => reduceStreamState(prev, envelope)),
-        onStatusChange: setStatus,
+        onStatusChange: (next) => {
+          setStatus(next);
+          // A socket that opened is proof of a reachable backend even if the
+          // REST snapshot lost a race on startup.
+          if (next === "open") setConnected(true);
+        },
       });
       client.connect();
     }
@@ -331,5 +353,5 @@ export function useRecoupStream(url: string = WS_URL): UseRecoupStreamResult {
     };
   }, [url]);
 
-  return { ...state, status };
+  return { ...state, status, connected };
 }
