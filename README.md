@@ -35,6 +35,25 @@
 
 ---
 
+## What is Recoup
+
+Recoup is an autonomous, money-safe revenue-recovery agent for Razorpay merchants.
+When a payment or a subscription charge fails, it works out **why** it failed, takes
+exactly one bounded recovery action suited to that cause, and records every step in a
+log that cannot be rewritten.
+
+The governing principle is restraint. An LLM only diagnoses — it never moves money. A
+deterministic state machine decides what to do. A single constraint gate is the only
+path to any money action, and an append-only audit trail proves what happened
+afterwards.
+
+- **Diagnoses the cause, not just the symptom** — insufficient funds, gateway degradation, a soft decline, an expired mandate, fraud, or a genuine unknown — using a deterministic rules table first and an LLM only for the ambiguous tail.
+- **Acts once, within hard bounds** — a salary-cycle retry, a back-off behind a circuit breaker, a customer nudge over voice / SMS / email, or a hand-off to a human. Never a blind retry storm.
+- **Refuses what it must** — more than three retries, amounts over ₹50,000, and anything fraud-flagged are stopped at the gate and escalated, with no money moved.
+- **Proves everything** — every transition is appended to an immutable log, and each batch report ships the full list of exceptions it could not recover, with reasons.
+
+---
+
 ## Why Track 03: AI Revenue Recovery
 
 > **Track 03 — AI Revenue Recovery:** *Find revenue that's slipping away and win it back.*
@@ -538,6 +557,21 @@ These four are the ones that make the safety claims provable rather than rhetori
 Plus `tests/unit/test_fsm_states.py`, which asserts illegal transitions raise and write nothing, and that terminal states refuse all further transitions.
 
 CI runs the backend suite, ruff, `ruff format --check`, mypy strict, and the dashboard build and tests on every push.
+
+---
+
+## Submission
+
+|  |  |
+|---|---|
+| **Name** | Ishaan Sharma |
+| **College** | Maharaja Surajmal Institute of Technology |
+| **Graduating** | 2028 |
+| **Track** | Track 03, AI Revenue Recovery |
+| **Project** | Recoup |
+| **What it solves** | Failed payments in India are chased by blind retry loops that burn gateway fees, annoy customers, and keep retrying cards that can never succeed. Recoup diagnoses why each payment failed, spends one bounded action on the cause, refuses anything past its hard caps, and proves every decision — including the refusals — with an append-only audit log. |
+| **Repository** | https://github.com/ishaans04/Recoup |
+| **Pitch video** | https://youtu.be/mytZe2pub4s |
 
 ---
 
