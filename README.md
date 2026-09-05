@@ -105,7 +105,7 @@ The model's entire authority is returning a `Diagnosis`:
 
 ```python
 class Diagnosis(BaseModel):
-    cause: Cause          # a closed enum — six values, nothing else
+    cause: Cause  # a closed enum — six values, nothing else
     confidence: float
     rationale: str
     source: Literal["rules", "llm", "fallback"]
@@ -125,7 +125,7 @@ class GatePass:
     txn_id: str
     action: Action
     checked_at: datetime
-    token: str        # HMAC over txn_id|action|checked_at — unforgeable
+    token: str  # HMAC over txn_id|action|checked_at — unforgeable
 ```
 
 A hand-constructed `GatePass` raises `GateBypassError`. A token minted for transaction A cannot execute transaction B. And this is not left to convention — `tests/architecture/test_single_door.py` walks the AST of every module under `src/recoup/` and **fails the build** if anything outside the executor imports `recoup.channels`.
